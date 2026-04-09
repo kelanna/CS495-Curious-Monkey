@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: "CS495 Curious Fox"
+authors:
+  - family-names: Huang
+    given-names: Kelan
+date-released: 2026
+version: 1.0.0
+license: MIT

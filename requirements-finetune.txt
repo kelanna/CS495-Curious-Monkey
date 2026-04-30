@@ -1,0 +1,2 @@
+# Phase 4 fine-tuning dependencies — requires CUDA GPU
+unsloth

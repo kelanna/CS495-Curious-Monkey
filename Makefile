@@ -8,10 +8,10 @@ test:
 	.venv/bin/python -m pytest tests/
 
 lint:
-	.venv/bin/rruff check .
+	.venv/bin/ruff check .
 
 run:
-	.venv/bin/python src/main.py
+	.venv/bin/python -m src.harness.run_experiments
 
 clean:
 	rm -rf .venv __pycache__ .pytest_cache

@@ -3,13 +3,13 @@ LOCAL_API_KEY = "lm-studio"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# LM Studio model IDs must match whatever is loaded in LM Studio
+# LM Studio model IDs — must match exactly what is shown in LM Studio's model list
 LOCAL_MODELS: list[str] = [
-    "mistralai/ministral-3b-instruct",
-    "nvidia/nemotron-mini-3b-instruct",
-    "qwen/qwen3-4b",
-    "google/gemma-3-4b-it",
-    "thudm/glm-4-9b-chat",
+    "mistralai/ministral-3-3b",
+    "nvidia/nemotron-3-nano-4b",
+    "qwen3.5-4b",
+    "qwen3.6-35b-a3b@iq3_s",
+    "qwen3.5-9b-claude-4.6-os-auto-variable-heretic-uncensored-thinking-max-neocode-imatrix",
 ]
 
 REMOTE_MODELS: list[str] = [
@@ -19,7 +19,7 @@ REMOTE_MODELS: list[str] = [
 
 ALL_MODELS: list[str] = LOCAL_MODELS + REMOTE_MODELS
 
-DEFAULT_MODELS: list[str] = LOCAL_MODELS[:2]
+DEFAULT_MODELS: list[str] = LOCAL_MODELS[:1]  # run one model at a time; pass --models to override
 DEFAULT_DOMAINS: list[str] = ["cooking"]
 DEFAULT_ATTACKS: list[str] = [
     "attack1_naive",

@@ -12,6 +12,7 @@
 2. Produce a cross-model and cross-domain comparison table (attack success rates).
 3. Run a LoRA fine-tuning experiment on the weakest model and compare before/after.
 4. Deliver: research paper, red-team audit report, demo video, slides, article.
+5. Use @demo.py as a template.
 
 ---
 

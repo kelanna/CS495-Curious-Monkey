@@ -11,7 +11,7 @@ lint:
 	.venv/bin/ruff check .
 
 run:
-	.venv/bin/python -m src.harness.run_experiments
+	PYTHONUNBUFFERED=1 .venv/bin/python -m src.harness.run_experiments
 
 clean:
 	rm -rf .venv __pycache__ .pytest_cache

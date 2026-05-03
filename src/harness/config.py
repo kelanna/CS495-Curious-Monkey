@@ -14,6 +14,8 @@ LOCAL_MODELS: list[str] = [
 
 REMOTE_MODELS: list[str] = [
     "openai/gpt-4o-mini",
+    "openai/gpt-4o",
+    "deepseek/deepseek-chat",
     "anthropic/claude-3-5-haiku",
 ]
 

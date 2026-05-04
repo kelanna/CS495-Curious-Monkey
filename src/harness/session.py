@@ -24,4 +24,4 @@ def chat(model_id: str, system_prompt: str, user_message: str) -> str:
         temperature=config.CHAT_TEMPERATURE,
         max_tokens=config.CHAT_MAX_TOKENS,
     )
-    return response.choices[0].message.content
+    return response.choices[0].message.content or ""

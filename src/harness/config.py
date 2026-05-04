@@ -4,17 +4,18 @@ LOCAL_API_KEY = "lm-studio"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # LM Studio model IDs — must match exactly what is shown in LM Studio's model list
+# Run one local model at a time: --models <id>
 LOCAL_MODELS: list[str] = [
-    "mistralai/ministral-3-3b",
-    "nvidia/nemotron-3-nano-4b",
-    "qwen3.5-4b",
-    "qwen3.6-35b-a3b@iq3_s",
-    "qwen3.5-9b-claude-4.6-os-auto-variable-heretic-uncensored-thinking-max-neocode-imatrix",
+    "meta-llama/llama-3.1-8b-instruct",  # verify exact ID in LM Studio
+    "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
 ]
 
+# OpenRouter model IDs — all four can be passed together in one --models call
 REMOTE_MODELS: list[str] = [
-    "openai/gpt-4o-mini",
-    "anthropic/claude-3-5-haiku",
+    "deepseek/deepseek-chat",
+    "openai/gpt-5.5",
+    "google/gemini-3-flash-preview",
+    "anthropic/claude-sonnet-4-6",
 ]
 
 ALL_MODELS: list[str] = LOCAL_MODELS + REMOTE_MODELS
@@ -30,4 +31,4 @@ DEFAULT_ATTACKS: list[str] = [
 DEFAULT_REPS: int = 3
 
 CHAT_TEMPERATURE: float = 0.7
-CHAT_MAX_TOKENS: int = 1000
+CHAT_MAX_TOKENS: int = 200

@@ -25,15 +25,16 @@ from .display import (
 )
 
 _ATTACK_TYPE: dict[str, str] = {
-    "attack1_naive": "Direct Override",
-    "attack2_context_ignore": "Context Ignore",
-    "attack3_extraction": "Confidentiality Breach",
-    "attack4_fake_completion": "Fake Completion",
-    "attack5_compliant_emotional": "Compliant Evasion",
-    "attack6_compliant_direct_yn": "Compliant Evasion",
-    "attack7_compliant_hypothetical": "Compliant Evasion",
-    "attack8_compliant_meta": "Compliant Evasion",
-    "attack9_compliant_roleplay": "Compliant Evasion",
+    # Phase I
+    "attack1_naive": "Naive Injection",
+    "attack2_roleplay": "Role-play / DAN",
+    "attack3_fake_completion": "Fake Completion",
+    "attack4_extraction": "System Prompt Extraction",
+    "attack5_base64": "Base64 Encoding",
+    # Phase II
+    "p2_authority_impersonation": "Authority Impersonation",
+    "p2_moral_paradox": "Moral Paradox",
+    "p2_recursive_permission": "Recursive Permission",
 }
 
 
@@ -116,7 +117,7 @@ def run_experiments(
                             result = attack_module.run(model_id, system_prompt)
                         result["domain"] = domain_id
                         result["rep"] = rep
-                        score = auto_score(attack_id, result["response"], system_prompt)
+                        score = auto_score(attack_id, result["response"], system_prompt, domain_id)
                         result["score"] = score
                         result["success"] = score == "SUCCESS"
                         print_response(model_id, result["response"], result["success"])

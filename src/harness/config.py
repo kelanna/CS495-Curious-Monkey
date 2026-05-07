@@ -6,13 +6,13 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # LM Studio model IDs — must match exactly what is shown in LM Studio's model list
 # Run one local model at a time: --models <id>
 LOCAL_MODELS: list[str] = [
-    "meta-llama/llama-3.1-8b-instruct",  # verify exact ID in LM Studio
+    "meta-llama-3.1-8b-instruct",
     "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
 ]
 
 # OpenRouter model IDs — all four can be passed together in one --models call
 REMOTE_MODELS: list[str] = [
-    "deepseek/deepseek-chat",
+    "deepseek/deepseek-v4-pro",
     "openai/gpt-5.5",
     "google/gemini-3-flash-preview",
     "anthropic/claude-sonnet-4-6",

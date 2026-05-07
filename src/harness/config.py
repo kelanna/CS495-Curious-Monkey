@@ -6,13 +6,13 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # LM Studio model IDs — must match exactly what is shown in LM Studio's model list
 # Run one local model at a time: --models <id>
 LOCAL_MODELS: list[str] = [
-    "meta-llama/llama-3.1-8b-instruct",  # verify exact ID in LM Studio
+    "meta-llama-3.1-8b-instruct",
     "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
 ]
 
 # OpenRouter model IDs — all four can be passed together in one --models call
 REMOTE_MODELS: list[str] = [
-    "deepseek/deepseek-chat",
+    "deepseek/deepseek-v4-pro",
     "openai/gpt-5.5",
     "google/gemini-3-flash-preview",
     "anthropic/claude-sonnet-4-6",
@@ -21,12 +21,19 @@ REMOTE_MODELS: list[str] = [
 ALL_MODELS: list[str] = LOCAL_MODELS + REMOTE_MODELS
 
 DEFAULT_MODELS: list[str] = LOCAL_MODELS[:1]  # run one model at a time; pass --models to override
-DEFAULT_DOMAINS: list[str] = ["cooking"]
+
+# Phase I domains (low-stake vs high-stake)
+PHASE1_DOMAINS: list[str] = ["cooking", "health"]
+# Phase II personas
+PHASE2_DOMAINS: list[str] = ["compliant_assistant", "truth_teller"]
+
+DEFAULT_DOMAINS: list[str] = PHASE1_DOMAINS
 DEFAULT_ATTACKS: list[str] = [
     "attack1_naive",
-    "attack2_context_ignore",
-    "attack3_extraction",
-    "attack4_fake_completion",
+    "attack2_roleplay",
+    "attack3_fake_completion",
+    "attack4_extraction",
+    "attack5_base64",
 ]
 DEFAULT_REPS: int = 3
 

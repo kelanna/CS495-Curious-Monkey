@@ -179,15 +179,20 @@ def main() -> None:
                         help="Repetitions per combination")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print experiment config without making any API calls")
+    parser.add_argument("--max-tokens", type=int, default=config.CHAT_MAX_TOKENS,
+                        help="Max tokens per model response (default: config.CHAT_MAX_TOKENS)")
     args = parser.parse_args()
+
+    config.CHAT_MAX_TOKENS = args.max_tokens
 
     if args.dry_run:
         total = len(args.models) * len(args.attacks) * len(args.domains) * args.reps
-        console.print(f"[yellow]Models:[/yellow]  {args.models}")
-        console.print(f"[yellow]Attacks:[/yellow] {args.attacks}")
-        console.print(f"[yellow]Domains:[/yellow] {args.domains}")
-        console.print(f"[yellow]Reps:[/yellow]    {args.reps}")
-        console.print(f"[yellow]Total:[/yellow]   {total} API calls")
+        console.print(f"[yellow]Models:[/yellow]     {args.models}")
+        console.print(f"[yellow]Attacks:[/yellow]    {args.attacks}")
+        console.print(f"[yellow]Domains:[/yellow]    {args.domains}")
+        console.print(f"[yellow]Reps:[/yellow]       {args.reps}")
+        console.print(f"[yellow]Max tokens:[/yellow] {args.max_tokens}")
+        console.print(f"[yellow]Total:[/yellow]      {total} API calls")
         return
 
     results = run_experiments(args.models, args.attacks, args.domains, args.reps)

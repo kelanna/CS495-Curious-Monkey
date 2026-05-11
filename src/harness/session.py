@@ -9,6 +9,11 @@ load_dotenv()
 
 
 def _client(model_id: str) -> OpenAI:
+    if model_id not in config.ALL_MODELS:
+        raise ValueError(
+            f"Model '{model_id}' is not in the approved research model list. "
+            f"Add it to config.LOCAL_MODELS or config.REMOTE_MODELS first."
+        )
     if model_id in config.REMOTE_MODELS:
         return OpenAI(base_url=config.OPENROUTER_BASE_URL, api_key=os.getenv("OPENROUTER_API_KEY", ""))
     return OpenAI(base_url=config.LOCAL_BASE_URL, api_key=config.LOCAL_API_KEY)

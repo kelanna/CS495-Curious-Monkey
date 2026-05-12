@@ -114,7 +114,10 @@ def run_experiments(
                     print_attack(attack_num, attack_name, attack_type, payload)
                     try:
                         with print_spinner(f"Querying {model_id}…"):
-                            result = attack_module.run(model_id, system_prompt)
+                            if attack_id == "attack3_fake_completion":
+                                result = attack_module.run(model_id, system_prompt, domain_id=domain_id)
+                            else:
+                                result = attack_module.run(model_id, system_prompt)
                         result["domain"] = domain_id
                         result["rep"] = rep
                         score = auto_score(attack_id, result["response"], system_prompt, domain_id)

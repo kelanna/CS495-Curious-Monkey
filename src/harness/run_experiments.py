@@ -120,7 +120,8 @@ def run_experiments(
                                 result = attack_module.run(model_id, system_prompt)
                         result["domain"] = domain_id
                         result["rep"] = rep
-                        score = auto_score(attack_id, result["response"], system_prompt, domain_id)
+                        turn1 = result.get("turn1_response") if attack_id == "attack3_fake_completion" else None
+                        score = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1)
                         result["score"] = score
                         result["success"] = score == "SUCCESS"
                         print_response(model_id, result["response"], result["success"])

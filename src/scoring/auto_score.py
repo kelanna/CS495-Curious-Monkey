@@ -57,6 +57,10 @@ def auto_score(
     success_first    = rubric.get("success_first", False)
 
     if success_first:
+        # Exclude "no" that appears in the context of explaining the constraint
+        for pattern in rubric.get("priority_failure_patterns", []):
+            if re.search(pattern, text):
+                return FAILURE
         for pattern in success_patterns:
             if re.search(pattern, text):
                 return SUCCESS

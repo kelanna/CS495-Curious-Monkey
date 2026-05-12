@@ -218,6 +218,18 @@ if run_btn and attack_id and domain_id:
     st.session_state["last_persona"]     = persona_display
     st.session_state["last_attack"]      = attack_display
 
+    # Append to session-scoped run log (for Session Log tab)
+    if "run_history" not in st.session_state:
+        st.session_state["run_history"] = []
+    st.session_state["run_history"].append({
+        "time":     datetime.now().strftime("%H:%M:%S"),
+        "model":    model_display,
+        "attack":   attack_display or "",
+        "domain":   persona_display or "",
+        "score":    result["score"],
+        "response": result["response"],
+    })
+
     # Save to results/scratch/ so the dashboard picks it up
     os.makedirs("results/scratch", exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -285,9 +297,9 @@ if phase in ("Phase I - Baseline Attacks", "Phase IIA - Cognitive Schema Attacks
             elif score == "AMBIGUOUS":
                 st.warning("AMBIGUOUS — Partial or unclear compliance; queued for manual review")
             elif success:
-                st.error("FAILURE — Model broke its directive")
+                st.success("SUCCESS — Model broke its directive")
             else:
-                st.success("SUCCESS — Model held its constraints")
+                st.error("FAILURE — Model maintained its directive")
         else:
             st.info("Select a configuration and click **Run Attack** to see a live response here.")
 
@@ -333,7 +345,7 @@ df = df_all if include_scratch else df_formal
 
 asr_df = compute_asr(df)
 
-tab1, tab2, tab3 = st.tabs(["Phase Summary Table", "Model Comparison", "Attack Vector Analysis"])
+tab1, tab2, tab3, tab4 = st.tabs(["Phase Summary Table", "Model Comparison", "Attack Vector Analysis", "Session Log"])
 
 # ── Tab 1: Phase Summary ──────────────────────────────────
 
@@ -520,6 +532,63 @@ with tab3:
         pivot_csv = pivot.reset_index().rename(columns={"index": "Attack Vector"}).to_csv(index=False).encode()
         st.download_button("Download heatmap data as CSV", pivot_csv, "attack_vector_heatmap.csv", "text/csv")
         st.caption("Each cell = avg ASR across all models for that attack × domain. Use the 📷 button on the chart to save as PNG.")
+
+# ── Tab 4: Session Log ────────────────────────────────────
+with tab4:
+    history = st.session_state.get("run_history", [])
+    if not history:
+        st.info("No runs this session yet. Use the sidebar to run an attack — each result will appear here.")
+    else:
+        st.markdown(f"**{len(history)} run(s) this session**")
+
+        _SCORE_BADGE = {
+            "SUCCESS":     ("🟢", "#2dc653"),
+            "FAILURE":     ("🔴", "#ef233c"),
+            "AMBIGUOUS":   ("🟡", "#f4a261"),
+            "NO_RESPONSE": ("🟡", "#f4a261"),
+            "CONFOUND":    ("🟡", "#f4a261"),
+            "ERROR":       ("🔴", "#ef233c"),
+        }
+
+        # Compact summary table
+        summary_rows = []
+        for i, entry in enumerate(reversed(history)):
+            icon, _ = _SCORE_BADGE.get(entry["score"], ("⚪", "#aaa"))
+            summary_rows.append({
+                "#":       len(history) - i,
+                "Time":    entry["time"],
+                "Model":   entry["model"],
+                "Attack":  entry["attack"],
+                "Domain":  entry["domain"],
+                "Score":   f"{icon} {entry['score']}",
+            })
+        st.dataframe(
+            pd.DataFrame(summary_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.markdown("---")
+        st.markdown("**Response Details**")
+
+        # One expander per run, newest first
+        for i, entry in enumerate(reversed(history)):
+            run_num = len(history) - i
+            icon, color = _SCORE_BADGE.get(entry["score"], ("⚪", "#aaa"))
+            label = f"#{run_num}  {entry['time']}  ·  {entry['attack']}  ·  {entry['model']}  ·  {icon} {entry['score']}"
+            with st.expander(label, expanded=(i == 0)):
+                st.markdown(
+                    f"<span style='color:{color}; font-weight:bold;'>{entry['score']}</span>"
+                    f"  &nbsp;|&nbsp;  {entry['domain']}",
+                    unsafe_allow_html=True,
+                )
+                st.text_area(
+                    "Response",
+                    entry["response"],
+                    height=160,
+                    key=f"log_resp_{run_num}_{i}",
+                    disabled=True,
+                )
 
 # ── Summary Metrics ───────────────────────────────────────
 

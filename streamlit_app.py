@@ -355,9 +355,23 @@ st.markdown("### Phase Results Dashboard")
 df_all    = load_results()
 df_formal = df_all[df_all["source"] == "formal"] if not df_all.empty else df_all
 
-include_scratch = st.checkbox("Include exploratory runs", value=False,
-                              help="Exploratory (scratch) runs are from ad-hoc tests and may include old model IDs or attack names. Uncheck to show only clean, reproducible CLI runs.")
-df = df_all if include_scratch else df_formal
+data_source = st.radio(
+    "Data source",
+    ["Formal only", "Scratch only", "All runs"],
+    index=0,
+    horizontal=True,
+    help=(
+        "**Formal** — reproducible CLI harness runs stored in results/formal/  |  "
+        "**Scratch** — ad-hoc UI test runs stored in results/scratch/ (may include old model IDs)  |  "
+        "**All** — both combined"
+    ),
+)
+if data_source == "Formal only":
+    df = df_formal
+elif data_source == "Scratch only":
+    df = df_all[df_all["source"] == "scratch"] if not df_all.empty else df_all
+else:
+    df = df_all
 
 asr_df = compute_asr(df)
 

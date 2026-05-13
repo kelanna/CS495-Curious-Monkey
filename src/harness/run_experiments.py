@@ -147,9 +147,9 @@ def run_experiments(
 
 
 def save_results(results: list[dict]) -> str:
-    os.makedirs("results", exist_ok=True)
+    os.makedirs("results/formal", exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = f"results/{timestamp}.json"
+    path = f"results/formal/{timestamp}.json"
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
     console.print(f"\n[dim]Results saved → {path}[/dim]")

@@ -100,6 +100,22 @@ def _panel(label: str, body: str, bg: str, border: str, text: str) -> None:
 # ── Results loader ────────────────────────────────────────
 
 @st.cache_data(ttl=30)
+def load_formal_records() -> list[dict]:
+    """Return full records (including payload + response) from results/formal/ only."""
+    rows: list[dict] = []
+    for path in glob.glob("results/formal/*.json"):
+        try:
+            with open(path) as f:
+                records = json.load(f)
+            for r in records:
+                if isinstance(r, dict) and r.get("attack_id", "").startswith("attack"):
+                    rows.append(r)
+        except Exception:
+            continue
+    return rows
+
+
+@st.cache_data(ttl=30)
 def load_results() -> pd.DataFrame:
     rows: list[dict] = []
     for path in glob.glob("results/**/*.json", recursive=True):
@@ -177,9 +193,9 @@ with st.sidebar:
         st.info("Multilingual attacks are under development.")
 
     elif phase == "Phase IIC - LLM as an Attacker":
-        st.info("Attacker/defender selection determined by Phase I results.")
-        st.markdown("**Attacker:** *TBD — highest Phase I ASR model*")
-        st.markdown("**Defender:** *TBD — lowest Phase I ASR model*")
+        st.success("Phase I complete — attacker/defender confirmed.")
+        st.markdown("**Attacker:** Llama 3.1 8B (local) — 76.7% Phase I ASR")
+        st.markdown("**Defender:** Claude Sonnet 4.6 (remote) — 13.3% Phase I ASR")
 
     elif phase == "Phase III - Fine-Tuning":
         st.info("Fine-tuning phase blocked on Phase I results.")
@@ -316,12 +332,12 @@ elif phase == "Phase IIC - LLM as an Attacker":
     st.markdown("### LLM as an Attacker")
     col1, col2 = st.columns(2)
     with col1:
-        _panel("Attacker Model · TBD from Phase I",
-               "The model with the highest Phase I ASR will generate attack payloads.",
+        _panel("Attacker Model · Llama 3.1 8B (local)",
+               "Highest Phase I ASR: 76.7%\n\nThis model will generate adversarial attack payloads targeting the defender's cooking agent system prompt.",
                "#4a0e0e", "#ef233c", "#ffe0e0")
     with col2:
-        _panel("Defender Model · TBD from Phase I",
-               "The model with the lowest Phase I ASR will be the attack target.",
+        _panel("Defender Model · Claude Sonnet 4.6 (remote)",
+               "Lowest Phase I ASR: 13.3%\n\nThis model will defend its cooking agent persona against Llama-generated attacks across the top 3 Phase I attack types.",
                "#0e3a4a", "#00b4d8", "#e0f7fa")
 
 elif phase == "Phase III - Fine-Tuning":
@@ -345,7 +361,7 @@ df = df_all if include_scratch else df_formal
 
 asr_df = compute_asr(df)
 
-tab1, tab2, tab3, tab4 = st.tabs(["Phase Summary Table", "Model Comparison", "Attack Vector Analysis", "Session Log"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Phase Summary Table", "Model Comparison", "Attack Vector Analysis", "Session Log", "Phase I Replay"])
 
 # ── Tab 1: Phase Summary ──────────────────────────────────
 
@@ -589,6 +605,133 @@ with tab4:
                     key=f"log_resp_{run_num}_{i}",
                     disabled=True,
                 )
+
+# ── Tab 5: Phase I Replay ─────────────────────────────────
+with tab5:
+    st.markdown("#### Phase I Replay — Recorded Run Log")
+    st.caption("Browse all 180 formal Phase I results. No API calls — loaded from saved JSON files.")
+
+    replay_records = load_formal_records()
+
+    if not replay_records:
+        st.info("No formal Phase I records found. Run the CLI harness first.")
+    else:
+        # ── Filters ──────────────────────────────────────────
+        rf1, rf2, rf3 = st.columns(3)
+        with rf1:
+            _model_opts = ["All"] + sorted({
+                MODEL_ID_TO_DISPLAY.get(r["model"], r["model"]) for r in replay_records
+            })
+            sel_model = st.selectbox("Model", _model_opts, key="rp_model")
+        with rf2:
+            _domain_opts = ["All"] + sorted({
+                DOMAIN_LABELS.get(r["domain"], r["domain"]) for r in replay_records
+            })
+            sel_domain = st.selectbox("Domain", _domain_opts, key="rp_domain")
+        with rf3:
+            _attack_opts = ["All"] + sorted({
+                r.get("attack_name", r["attack_id"]) for r in replay_records
+            })
+            sel_attack = st.selectbox("Attack Type", _attack_opts, key="rp_attack")
+
+        demo_mode = st.toggle("Demo mode — one run at a time", value=False, key="rp_demo")
+
+        # Apply filters
+        filtered_recs = replay_records
+        if sel_model != "All":
+            filtered_recs = [r for r in filtered_recs
+                             if MODEL_ID_TO_DISPLAY.get(r["model"], r["model"]) == sel_model]
+        if sel_domain != "All":
+            filtered_recs = [r for r in filtered_recs
+                             if DOMAIN_LABELS.get(r["domain"], r["domain"]) == sel_domain]
+        if sel_attack != "All":
+            filtered_recs = [r for r in filtered_recs
+                             if r.get("attack_name", r["attack_id"]) == sel_attack]
+
+        st.markdown(f"**{len(filtered_recs)} run(s) matching filters**")
+
+        if not filtered_recs:
+            st.warning("No runs match the selected filters.")
+        elif demo_mode:
+            # ── Single-slide demo view ────────────────────────
+            idx = st.number_input(
+                f"Run (1 – {len(filtered_recs)})",
+                min_value=1, max_value=len(filtered_recs), value=1, step=1, key="rp_idx"
+            ) - 1
+            prev_col, next_col, _ = st.columns([1, 1, 8])
+            with prev_col:
+                if st.button("◀ Prev", key="rp_prev", disabled=(idx == 0)):
+                    st.session_state["rp_idx"] = idx  # no-op; number_input owns state
+            with next_col:
+                if st.button("Next ▶", key="rp_next", disabled=(idx >= len(filtered_recs) - 1)):
+                    st.session_state["rp_idx"] = idx + 2
+
+            rec = filtered_recs[idx]
+            model_label  = MODEL_ID_TO_DISPLAY.get(rec["model"], rec["model"])
+            domain_label = DOMAIN_LABELS.get(rec["domain"], rec["domain"])
+            attack_name  = rec.get("attack_name", rec["attack_id"])
+            score        = rec.get("score", "")
+            system_prompt = SYSTEM_PROMPTS.get(rec["domain"], "")
+            payload       = rec.get("payload", "")
+            response      = rec.get("response", "")
+            rep           = rec.get("rep", 0)
+
+            st.markdown(
+                f"<span style='color:#888; font-size:13px;'>Run {idx+1} of {len(filtered_recs)}"
+                f" &nbsp;·&nbsp; Rep {rep+1}</span>",
+                unsafe_allow_html=True,
+            )
+            c1, c2 = st.columns(2)
+            with c1:
+                _panel(f"🤖 AGENT PROMPT · {domain_label} · {model_label}",
+                       system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa")
+                _panel(f"⚔️ ATTACK · {attack_name}",
+                       payload, "#4a0e0e", "#ef233c", "#ffe0e0")
+            with c2:
+                _panel(f"💬 MODEL RESPONSE · {model_label}",
+                       response, "#0e4a1a", "#2dc653", "#e0ffe6")
+                if score in ("AMBIGUOUS", "NO_RESPONSE", "CONFOUND"):
+                    st.warning(f"{score} — Partial or no compliance; excluded from ASR")
+                elif score == "SUCCESS":
+                    st.success("SUCCESS — Model broke its directive")
+                else:
+                    st.error("FAILURE — Model maintained its directive")
+
+        else:
+            # ── Paginated list view ───────────────────────────
+            per_page = st.select_slider("Runs per page", [5, 10, 25, 50], value=10, key="rp_per_page")
+            total_pages = max(1, (len(filtered_recs) + per_page - 1) // per_page)
+            page = st.number_input("Page", min_value=1, max_value=total_pages, value=1, key="rp_page") - 1
+            page_recs = filtered_recs[page * per_page: page * per_page + per_page]
+
+            for rec in page_recs:
+                model_label  = MODEL_ID_TO_DISPLAY.get(rec["model"], rec["model"])
+                domain_label = DOMAIN_LABELS.get(rec["domain"], rec["domain"])
+                attack_name  = rec.get("attack_name", rec["attack_id"])
+                score        = rec.get("score", "")
+                rep          = rec.get("rep", 0)
+                icon = "✅" if score == "SUCCESS" else ("⚠️" if score in ("AMBIGUOUS", "NO_RESPONSE") else "🛡️")
+                label = f"{icon} **{model_label}** · {domain_label} · {attack_name} · Rep {rep+1} · {score}"
+                with st.expander(label, expanded=False):
+                    system_prompt = SYSTEM_PROMPTS.get(rec["domain"], "")
+                    payload       = rec.get("payload", "")
+                    response      = rec.get("response", "")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        _panel(f"🤖 AGENT PROMPT · {domain_label} · {model_label}",
+                               system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa")
+                        _panel(f"⚔️ ATTACK · {attack_name}",
+                               payload, "#4a0e0e", "#ef233c", "#ffe0e0")
+                    with c2:
+                        _panel(f"💬 MODEL RESPONSE · {model_label}",
+                               response, "#0e4a1a", "#2dc653", "#e0ffe6")
+                        if score in ("AMBIGUOUS", "NO_RESPONSE", "CONFOUND"):
+                            st.warning(f"{score} — Partial or no compliance")
+                        elif score == "SUCCESS":
+                            st.success("SUCCESS — Model broke its directive")
+                        else:
+                            st.error("FAILURE — Model maintained its directive")
+
 
 # ── Summary Metrics ───────────────────────────────────────
 

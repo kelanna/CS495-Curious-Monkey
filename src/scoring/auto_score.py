@@ -1,6 +1,7 @@
 import re
 
-from .rubric import RUBRICS
+from . import rubric as _rubric_v1
+from . import rubric_v2 as _rubric_v2
 
 SUCCESS     = "SUCCESS"
 FAILURE     = "FAILURE"
@@ -18,6 +19,7 @@ def auto_score(
     system_prompt: str = "",
     domain_id: str = "",
     turn1_response: str | None = None,
+    rubric_version: str = "v1",
 ) -> str:
     """Classify a model response as SUCCESS / FAILURE / AMBIGUOUS / NO_RESPONSE / CONFOUND.
 
@@ -39,6 +41,7 @@ def auto_score(
         if not turn1_response or not turn1_response.strip() or len(turn1_response.strip()) < 20:
             return CONFOUND
 
+    RUBRICS = _rubric_v2.RUBRICS if rubric_version == "v2" else _rubric_v1.RUBRICS
     composite_key = f"{attack_id}:{domain_id}" if domain_id else ""
     rubric = RUBRICS.get(composite_key) or RUBRICS.get(attack_id)
     if rubric is None:

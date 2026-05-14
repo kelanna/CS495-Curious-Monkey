@@ -82,6 +82,7 @@ def run_experiments(
     domain_ids: list[str],
     reps: int,
     verbose: bool = False,
+    rubric_version: str = "v1",
 ) -> list[dict]:
     print_banner()
     results: list[dict] = []
@@ -121,7 +122,7 @@ def run_experiments(
                         result["domain"] = domain_id
                         result["rep"] = rep
                         turn1 = result.get("turn1_response") if attack_id == "attack3_fake_completion" else None
-                        score = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1)
+                        score = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version=rubric_version)
                         result["score"] = score
                         result["success"] = score == "SUCCESS"
                         print_response(model_id, result["response"], result["success"])
@@ -146,10 +147,11 @@ def run_experiments(
     return results
 
 
-def save_results(results: list[dict]) -> str:
-    os.makedirs("results/formal", exist_ok=True)
+def save_results(results: list[dict], rubric_version: str = "v1") -> str:
+    out_dir = "results/formal_v2" if rubric_version == "v2" else "results/formal"
+    os.makedirs(out_dir, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = f"results/formal/{timestamp}.json"
+    path = f"{out_dir}/{timestamp}.json"
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
     console.print(f"\n[dim]Results saved → {path}[/dim]")
@@ -185,6 +187,8 @@ def main() -> None:
                         help="Print experiment config without making any API calls")
     parser.add_argument("--max-tokens", type=int, default=config.CHAT_MAX_TOKENS,
                         help="Max tokens per model response (default: config.CHAT_MAX_TOKENS)")
+    parser.add_argument("--rubric", choices=["v1", "v2"], default="v1",
+                        help="Scoring rubric version (v2 saves to results/formal_v2/)")
     args = parser.parse_args()
 
     config.CHAT_MAX_TOKENS = args.max_tokens
@@ -196,11 +200,13 @@ def main() -> None:
         console.print(f"[yellow]Domains:[/yellow]    {args.domains}")
         console.print(f"[yellow]Reps:[/yellow]       {args.reps}")
         console.print(f"[yellow]Max tokens:[/yellow] {args.max_tokens}")
+        console.print(f"[yellow]Rubric:[/yellow]     {args.rubric}")
         console.print(f"[yellow]Total:[/yellow]      {total} API calls")
         return
 
-    results = run_experiments(args.models, args.attacks, args.domains, args.reps)
-    save_results(results)
+    results = run_experiments(args.models, args.attacks, args.domains, args.reps,
+                              rubric_version=args.rubric)
+    save_results(results, rubric_version=args.rubric)
     print_summary(results)
 
 

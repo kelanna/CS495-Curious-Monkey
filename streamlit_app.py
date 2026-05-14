@@ -100,10 +100,11 @@ def _panel(label: str, body: str, bg: str, border: str, text: str) -> None:
 # ── Results loader ────────────────────────────────────────
 
 @st.cache_data(ttl=30)
-def load_formal_records() -> list[dict]:
-    """Return full records (including payload + response) from results/formal/ only."""
+def load_formal_records(rubric: str = "v1") -> list[dict]:
+    """Return full records (including payload + response) from results/formal/ or results/formal_v2/."""
+    folder = "results/formal_v2" if rubric == "v2" else "results/formal"
     rows: list[dict] = []
-    for path in glob.glob("results/formal/*.json"):
+    for path in glob.glob(f"{folder}/*.json"):
         try:
             with open(path) as f:
                 records = json.load(f)
@@ -119,7 +120,12 @@ def load_formal_records() -> list[dict]:
 def load_results() -> pd.DataFrame:
     rows: list[dict] = []
     for path in glob.glob("results/**/*.json", recursive=True):
-        source = "scratch" if "scratch" in path else "formal"
+        if "formal_v2" in path:
+            source = "formal_v2"
+        elif "scratch" in path:
+            source = "scratch"
+        else:
+            source = "formal"
         try:
             with open(path) as f:
                 records = json.load(f)
@@ -352,22 +358,26 @@ elif phase == "Phase III - Fine-Tuning":
 st.divider()
 st.markdown("### Phase Results Dashboard")
 
-df_all    = load_results()
-df_formal = df_all[df_all["source"] == "formal"] if not df_all.empty else df_all
+df_all       = load_results()
+df_formal    = df_all[df_all["source"] == "formal"]    if not df_all.empty else df_all
+df_formal_v2 = df_all[df_all["source"] == "formal_v2"] if not df_all.empty else df_all
 
 data_source = st.radio(
     "Data source",
-    ["Formal only", "Scratch only", "All runs"],
+    ["Formal only (rubric v1)", "Formal v2 (rubric v2)", "Scratch only", "All runs"],
     index=0,
     horizontal=True,
     help=(
-        "**Formal** — reproducible CLI harness runs stored in results/formal/  |  "
-        "**Scratch** — ad-hoc UI test runs stored in results/scratch/ (may include old model IDs)  |  "
-        "**All** — both combined"
+        "**Formal v1** — CLI harness runs in results/formal/ scored with rubric v1  |  "
+        "**Formal v2** — CLI harness runs in results/formal_v2/ scored with rubric v2  |  "
+        "**Scratch** — ad-hoc UI test runs (may include old model IDs)  |  "
+        "**All** — everything combined"
     ),
 )
-if data_source == "Formal only":
+if data_source == "Formal only (rubric v1)":
     df = df_formal
+elif data_source == "Formal v2 (rubric v2)":
+    df = df_formal_v2
 elif data_source == "Scratch only":
     df = df_all[df_all["source"] == "scratch"] if not df_all.empty else df_all
 else:
@@ -623,9 +633,21 @@ with tab4:
 # ── Tab 5: Phase I Replay ─────────────────────────────────
 with tab5:
     st.markdown("#### Phase I Replay — Recorded Run Log")
-    st.caption("Browse all 180 formal Phase I results. No API calls — loaded from saved JSON files.")
 
-    replay_records = load_formal_records()
+    replay_rubric = st.radio(
+        "Rubric version",
+        ["v1 (formal)", "v2 (formal_v2)"],
+        index=0,
+        horizontal=True,
+        key="replay_rubric",
+    )
+    _rubric_key = "v2" if replay_rubric.startswith("v2") else "v1"
+    st.caption(
+        f"Browsing results/formal{'_v2' if _rubric_key == 'v2' else ''}/ — "
+        "no API calls, loaded from saved JSON files."
+    )
+
+    replay_records = load_formal_records(rubric=_rubric_key)
 
     if not replay_records:
         st.info("No formal Phase I records found. Run the CLI harness first.")

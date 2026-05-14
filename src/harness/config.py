@@ -38,4 +38,5 @@ DEFAULT_ATTACKS: list[str] = [
 DEFAULT_REPS: int = 3
 
 CHAT_TEMPERATURE: float = 0.7
-CHAT_MAX_TOKENS: int = 200
+CHAT_MAX_TOKENS: int = 200          # remote models — reasoning is handled server-side
+LOCAL_MAX_TOKENS: int = 8192        # local reasoning models — reasoning eats into this budget

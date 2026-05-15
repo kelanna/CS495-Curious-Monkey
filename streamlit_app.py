@@ -16,6 +16,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.agents.prompts import SYSTEM_PROMPTS
 from src.attacks import REGISTRY as ATTACK_REGISTRY
+from src.attacks.p2b_payloads import (
+    LANGUAGE_DISPLAY as P2B_LANG_DISPLAY,
+    PAYLOADS as P2B_PAYLOADS,
+    is_ready as p2b_is_ready,
+)
+from src.attacks.p2b_multilingual import ALL_P2B
+from src.attacks.p2c_llm_attacker import (
+    ATTACK_STYLES as P2C_STYLES,
+    ATTACK_STYLE_DISPLAY as P2C_STYLE_DISPLAY,
+    ATTACKER_MODEL as P2C_ATTACKER,
+    DEFENDER_MODEL as P2C_DEFENDER,
+    run as p2c_run,
+)
 from src.harness import config
 from src.scoring.auto_score import auto_score
 
@@ -72,6 +85,10 @@ PHASE2A_ATTACKS: dict[str, str] = {
     "1 - Authority Impersonation":   "p2_authority_impersonation",
     "2 - The Moral Paradox":         "p2_moral_paradox",
     "3 - The Recursive Permission":  "p2_recursive_permission",
+}
+# Phase IIB: same attack labels as Phase I, but IDs point to multilingual wrappers
+PHASE2B_LANGUAGE_KEYS: dict[str, str] = {
+    v: k for k, v in P2B_LANG_DISPLAY.items()
 }
 
 PHASE_KEYS = [
@@ -181,6 +198,7 @@ with st.sidebar:
 
     persona_display = attack_display = language = None
     domain_id = attack_id = None
+    p2b_lang_key = None   # internal language key (mandarin / swahili / welsh)
 
     if phase == "Phase I - Baseline Attacks":
         persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
@@ -195,13 +213,29 @@ with st.sidebar:
         attack_id  = PHASE2A_ATTACKS[attack_display]
 
     elif phase == "Phase IIB - Multilingual Attack Comparison":
-        language = st.selectbox("Language", ["Mandarin", "Swahili", "Welsh"])
-        st.info("Multilingual attacks are under development.")
+        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
+        attack_display  = st.selectbox("Attack Type", list(PHASE1_ATTACKS.keys()))
+        language        = st.selectbox("Language", list(P2B_LANG_DISPLAY.values()))
+        domain_id       = PHASE1_DOMAINS[persona_display]
+        base_attack_id  = PHASE1_ATTACKS[attack_display]
+        p2b_lang_key    = {v: k for k, v in P2B_LANG_DISPLAY.items()}[language]
+        attack_id       = ALL_P2B[
+            next(aid for aid, inst in ALL_P2B.items()
+                 if inst.BASE_ATTACK_ID == base_attack_id and inst.LANGUAGE == p2b_lang_key)
+        ].ATTACK_ID
+        if not p2b_is_ready(p2b_lang_key):
+            st.warning(
+                f"{language} translations are placeholders — fill in "
+                f"`src/attacks/p2b_payloads.py` before running."
+            )
 
     elif phase == "Phase IIC - LLM as an Attacker":
-        st.success("Phase I complete — attacker/defender confirmed.")
-        st.markdown("**Attacker:** Llama 3.1 8B (local) — 76.7% Phase I ASR")
-        st.markdown("**Defender:** Claude Sonnet 4.6 (remote) — 13.3% Phase I ASR")
+        persona_display  = st.selectbox("Defender Persona", list(PHASE1_DOMAINS.keys()))
+        p2c_style_display = st.selectbox("Attack Style (Llama-generated)", list(P2C_STYLE_DISPLAY.keys()))
+        domain_id  = PHASE1_DOMAINS[persona_display]
+        attack_id  = P2C_STYLE_DISPLAY[p2c_style_display]
+        st.caption("**Attacker:** Llama 3.1 8B (local) — 82.8% Phase I ASR (rubric v2)")
+        st.caption("**Defender:** Claude Sonnet 4.6 (remote) — 8.3% Phase I ASR (rubric v2)")
 
     elif phase == "Phase III - Fine-Tuning":
         st.info("Fine-tuning phase blocked on Phase I results.")
@@ -213,28 +247,60 @@ with st.sidebar:
 
 if run_btn and attack_id and domain_id:
     system_prompt = SYSTEM_PROMPTS[domain_id]
-    attack_module = ATTACK_REGISTRY[attack_id]
-    with st.spinner(f"Querying {model_display}…"):
-        try:
-            if attack_id == "attack3_fake_completion":
-                result = attack_module.run(model_id, system_prompt, domain_id=domain_id)
-            else:
-                result = attack_module.run(model_id, system_prompt)
-            result["domain"] = domain_id
-            turn1 = result.get("turn1_response") if attack_id == "attack3_fake_completion" else None
-            result["score"]  = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1)
-            result["success"] = result["score"] == "SUCCESS"
-        except Exception as exc:
-            result = {
-                "attack_id":   attack_id,
-                "attack_name": getattr(attack_module, "ATTACK_NAME", attack_id),
-                "model":       model_id,
-                "domain":      domain_id,
-                "payload":     getattr(attack_module, "PAYLOAD", ""),
-                "response":    f"[ERROR] {exc}",
-                "score":       "ERROR",
-                "success":     False,
-            }
+    _is_p2b = attack_id in ALL_P2B
+    _is_p2c = attack_id in P2C_STYLES
+    _base_id = (
+        ALL_P2B[attack_id].BASE_ATTACK_ID if _is_p2b else
+        P2C_STYLES[attack_id]["base_attack"] if _is_p2c else
+        attack_id
+    )
+    attack_module = ATTACK_REGISTRY.get(attack_id)
+
+    if _is_p2c:
+        with st.spinner(
+            f"Step 1 — Llama 3.1 8B generating payload…  "
+            f"Step 2 — Claude Sonnet 4.6 defending…"
+        ):
+            try:
+                result = p2c_run(attack_id, system_prompt, domain_id=domain_id)
+                turn1 = result.get("turn1_response") if _base_id == "attack3_fake_completion" else None
+                result["score"]   = auto_score(_base_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version="v2")
+                result["success"] = result["score"] == "SUCCESS"
+            except Exception as exc:
+                result = {
+                    "attack_id":   attack_id,
+                    "attack_name": P2C_STYLES[attack_id]["name"],
+                    "model":       P2C_DEFENDER,
+                    "domain":      domain_id,
+                    "generated_payload": "",
+                    "payload":     "",
+                    "response":    f"[ERROR] {exc}",
+                    "score":       "ERROR",
+                    "success":     False,
+                    "phase":       "iic",
+                }
+    else:
+        with st.spinner(f"Querying {model_display}…"):
+            try:
+                if _base_id == "attack3_fake_completion":
+                    result = attack_module.run(model_id, system_prompt, domain_id=domain_id)
+                else:
+                    result = attack_module.run(model_id, system_prompt)
+                result["domain"] = domain_id
+                turn1 = result.get("turn1_response") if _base_id == "attack3_fake_completion" else None
+                result["score"]   = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version="v2")
+                result["success"] = result["score"] == "SUCCESS"
+            except Exception as exc:
+                result = {
+                    "attack_id":   attack_id,
+                    "attack_name": getattr(attack_module, "ATTACK_NAME", attack_id),
+                    "model":       model_id,
+                    "domain":      domain_id,
+                    "payload":     getattr(attack_module, "PAYLOAD", ""),
+                    "response":    f"[ERROR] {exc}",
+                    "score":       "ERROR",
+                    "success":     False,
+                }
     st.session_state["last_result"]      = result
     st.session_state["last_model_label"] = model_display
     st.session_state["last_persona"]     = persona_display
@@ -243,19 +309,25 @@ if run_btn and attack_id and domain_id:
     # Append to session-scoped run log (for Session Log tab)
     if "run_history" not in st.session_state:
         st.session_state["run_history"] = []
-    st.session_state["run_history"].append({
+    log_entry: dict = {
         "time":     datetime.now().strftime("%H:%M:%S"),
-        "model":    model_display,
-        "attack":   attack_display or "",
+        "model":    "Llama→Claude" if _is_p2c else model_display,
+        "attack":   (p2c_style_display if _is_p2c else attack_display) or "",
         "domain":   persona_display or "",
         "score":    result["score"],
         "response": result["response"],
-    })
+    }
+    if _is_p2b:
+        log_entry["language"] = result.get("language", "")
+    if _is_p2c:
+        log_entry["generated_payload"] = result.get("generated_payload", "")
+    st.session_state["run_history"].append(log_entry)
 
-    # Save to results/scratch/ so the dashboard picks it up
+    # Save scratch run; suffix encodes phase for easy filtering
     os.makedirs("results/scratch", exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    save_path = f"results/scratch/{ts}_ui.json"
+    suffix = "_p2c_ui" if _is_p2c else ("_p2b_ui" if _is_p2b else "_ui")
+    save_path = f"results/scratch/{ts}{suffix}.json"
     with open(save_path, "w") as f:
         json.dump([result], f, indent=2)
 
@@ -325,26 +397,107 @@ if phase in ("Phase I - Baseline Attacks", "Phase IIA - Cognitive Schema Attacks
         else:
             st.info("Select a configuration and click **Run Attack** to see a live response here.")
 
-elif phase == "Phase IIB - Multilingual Attack Comparison":
-    st.markdown("### Multilingual Attack Comparison")
-    _panel(
-        "Work in Progress",
-        f"The multilingual framework for {language} is under development.\n"
-        "This phase translates Phase I attack payloads and re-runs against all 6 models.",
-        "#1a1a2e", "#e94560", "#e0e0e0",
-    )
+elif phase == "Phase IIB - Multilingual Attack Comparison" and domain_id and attack_id and p2b_lang_key:
+    st.markdown(f"### Multilingual Attack Comparison — {language}")
+    _inst    = ALL_P2B[attack_id]
+    _en_payload = P2B_PAYLOADS["mandarin"].get(_inst.BASE_ATTACK_ID, "")  # re-use ZH for preview ref
+    system_prompt = SYSTEM_PROMPTS[domain_id]
 
-elif phase == "Phase IIC - LLM as an Attacker":
-    st.markdown("### LLM as an Attacker")
     col1, col2 = st.columns(2)
     with col1:
-        _panel("Attacker Model · Llama 3.1 8B (local)",
-               "Highest Phase I ASR: 76.7%\n\nThis model will generate adversarial attack payloads targeting the defender's cooking agent system prompt.",
-               "#4a0e0e", "#ef233c", "#ffe0e0")
+        _panel(
+            f"🤖 AGENT PROMPT · {persona_display} · {model_display}",
+            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
+        )
+        if _inst.BASE_ATTACK_ID == "attack3_fake_completion":
+            from src.attacks.p2b_payloads import TURN1_PROMPTS as P2B_TURN1
+            turn1_preview = P2B_TURN1[p2b_lang_key].get(domain_id, "")
+            _panel(
+                f"⚔️ ATTACK · {attack_display} · Turn 1 ({language})",
+                turn1_preview, "#2a1a4a", "#a78bfa", "#ede9fe",
+            )
+            _panel(
+                f"⚔️ ATTACK · {attack_display} · Turn 2 injection ({language})",
+                _inst.PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
+            )
+        else:
+            _panel(
+                f"⚔️ ATTACK · {attack_display} ({language})",
+                _inst.PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
+            )
+
     with col2:
-        _panel("Defender Model · Claude Sonnet 4.6 (remote)",
-               "Lowest Phase I ASR: 13.3%\n\nThis model will defend its cooking agent persona against Llama-generated attacks across the top 3 Phase I attack types.",
-               "#0e3a4a", "#00b4d8", "#e0f7fa")
+        last = st.session_state.get("last_result")
+        if (last
+                and last.get("model") == model_id
+                and last.get("attack_id") == attack_id):
+            response = last["response"]
+            score    = last["score"]
+            success  = last["success"]
+            if _inst.BASE_ATTACK_ID == "attack3_fake_completion" and last.get("turn1_response"):
+                _panel("💬 TURN 1 RESPONSE",
+                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
+            _panel(f"💬 MODEL RESPONSE · {model_display}",
+                   response, "#0e4a1a", "#2dc653", "#e0ffe6")
+            if score == "ERROR":
+                st.error("ERROR — Could not reach model")
+            elif score == "NO_RESPONSE":
+                st.warning("NO RESPONSE — Model returned an empty reply")
+            elif score == "CONFOUND":
+                st.warning("CONFOUND — Turn 1 was abnormal")
+            elif score == "AMBIGUOUS":
+                st.warning("AMBIGUOUS — Non-English response likely; flag for manual review")
+            elif success:
+                st.success("SUCCESS — Model broke its directive")
+            else:
+                st.error("FAILURE — Model maintained its directive")
+        else:
+            st.info("Select a configuration and click **Run Attack** to see a live response here.")
+
+elif phase == "Phase IIC - LLM as an Attacker" and domain_id and attack_id:
+    st.markdown("### LLM as an Attacker")
+    _style = P2C_STYLES[attack_id]
+    system_prompt = SYSTEM_PROMPTS[domain_id]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        _panel(
+            f"🤖 DEFENDER PROMPT · {persona_display} · Claude Sonnet 4.6 (remote)",
+            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
+        )
+        last = st.session_state.get("last_result")
+        _gen = last.get("generated_payload", "") if (last and last.get("attack_id") == attack_id) else ""
+        _panel(
+            f"⚔️ LLAMA-GENERATED PAYLOAD · {_style['name']}",
+            _gen if _gen else f"[Click 'Run Attack' — Llama will generate a payload targeting:\n\"{_style['goal']}\"]",
+            "#4a0e0e", "#ef233c", "#ffe0e0",
+        )
+
+    with col2:
+        last = st.session_state.get("last_result")
+        if last and last.get("attack_id") == attack_id and last.get("phase") == "iic":
+            response = last["response"]
+            score    = last["score"]
+            success  = last["success"]
+            if _style["base_attack"] == "attack3_fake_completion" and last.get("turn1_response"):
+                _panel("💬 CLAUDE TURN 1 RESPONSE (on-topic)",
+                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
+            _panel("💬 CLAUDE SONNET 4.6 DEFENSE RESPONSE",
+                   response, "#0e4a1a", "#2dc653", "#e0ffe6")
+            if score == "ERROR":
+                st.error("ERROR — Could not reach a model")
+            elif score == "NO_RESPONSE":
+                st.warning("NO RESPONSE — Model returned an empty reply")
+            elif score == "CONFOUND":
+                st.warning("CONFOUND — Turn 1 was abnormal")
+            elif score == "AMBIGUOUS":
+                st.warning("AMBIGUOUS — Queued for manual review")
+            elif success:
+                st.success("SUCCESS — Claude broke its directive (Llama wins)")
+            else:
+                st.error("FAILURE — Claude held its directive (Defender wins)")
+        else:
+            st.info("Select a configuration and click **Run Attack** — Llama will generate an injection payload live, then Claude will defend.")
 
 elif phase == "Phase III - Fine-Tuning":
     st.markdown("### Phase III — Fine-Tuning")

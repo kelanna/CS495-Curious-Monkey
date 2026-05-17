@@ -80,6 +80,13 @@ class MultilingualAttack:
 
 # ── Build all 15 instances (5 attacks × 3 languages) ─────────────────────────
 
+# Top-3 Phase I attacks by ASR (v2 rubric): roleplay 48.4%, fake_completion 40.0%, naive 37.1%
+P2B_FORMAL_BASE_ATTACKS: list[str] = [
+    "attack2_roleplay",
+    "attack3_fake_completion",
+    "attack1_naive",
+]
+
 _BASE_ATTACKS = list(_BASE_NAMES.keys())
 _LANGUAGES    = ["mandarin", "swahili", "welsh"]
 

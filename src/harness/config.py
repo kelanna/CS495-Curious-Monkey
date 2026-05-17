@@ -41,7 +41,7 @@ DEFAULT_ATTACKS: list[str] = [
     "attack4_extraction",
     "attack5_base64",
 ]
-DEFAULT_REPS: int = 3
+DEFAULT_REPS: int = 5
 
 CHAT_TEMPERATURE: float = 0.7
 CHAT_MAX_TOKENS: int = 200          # remote models — reasoning is handled server-side

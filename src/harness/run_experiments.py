@@ -7,8 +7,10 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from ..attacks import REGISTRY as ATTACK_REGISTRY
+from ..attacks.p2b_multilingual import ALL_P2B
 from ..agents.prompts import SYSTEM_PROMPTS
 from ..scoring.auto_score import auto_score
+from ..scoring.translate_score import score_multilingual
 from . import config
 from .display import (
     console,
@@ -81,6 +83,7 @@ def run_experiments(
     attack_ids: list[str],
     domain_ids: list[str],
     reps: int,
+    rep_start: int = 0,
     verbose: bool = False,
     rubric_version: str = "v1",
 ) -> list[dict]:
@@ -97,7 +100,8 @@ def run_experiments(
             print_phase_header(
                 phase_num,
                 f"{domain_id.upper()} — {model_id}",
-                f"Running {len(attack_ids)} attacks × {reps} rep(s) against the {domain_id} agent.",
+                f"Running {len(attack_ids)} attacks × {reps} rep(s) "
+                f"(rep {rep_start + 1}–{rep_start + reps}) against the {domain_id} agent.",
             )
             print_agent_prompt(domain_id, system_prompt, model_id)
 
@@ -106,25 +110,48 @@ def run_experiments(
                 attack_name = getattr(attack_module, "ATTACK_NAME", attack_id)
                 attack_type = _ATTACK_TYPE.get(attack_id, "Unknown")
                 payload = getattr(attack_module, "PAYLOAD", "")
+                _is_p2b = attack_id in ALL_P2B
 
                 print_section_divider(attack_name)
 
-                for rep in range(reps):
+                for rep_offset in range(reps):
+                    rep = rep_start + rep_offset
                     if reps > 1:
-                        print_run_summary(rep + 1, reps)
+                        print_run_summary(rep + 1, rep_start + reps)
                     print_attack(attack_num, attack_name, attack_type, payload)
+                    base_id = ALL_P2B[attack_id].BASE_ATTACK_ID if _is_p2b else attack_id
                     try:
                         with print_spinner(f"Querying {model_id}…"):
-                            if attack_id == "attack3_fake_completion":
+                            if base_id == "attack3_fake_completion":
                                 result = attack_module.run(model_id, system_prompt, domain_id=domain_id)
                             else:
                                 result = attack_module.run(model_id, system_prompt)
                         result["domain"] = domain_id
                         result["rep"] = rep
-                        turn1 = result.get("turn1_response") if attack_id == "attack3_fake_completion" else None
-                        score = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version=rubric_version)
-                        result["score"] = score
-                        result["success"] = score == "SUCCESS"
+                        turn1 = result.get("turn1_response") if base_id == "attack3_fake_completion" else None
+
+                        if _is_p2b:
+                            _inst = ALL_P2B[attack_id]
+                            scoring = score_multilingual(
+                                attack_id=attack_id,
+                                base_attack_id=_inst.BASE_ATTACK_ID,
+                                language_code=_inst.LANGUAGE,
+                                model=model_id,
+                                rep=rep,
+                                attack_prompt=result["payload"],
+                                response_original=result["response"],
+                                system_prompt=system_prompt,
+                                domain_id=domain_id,
+                                turn1_response=turn1,
+                            )
+                            result.update(scoring)
+                            result["score"]   = scoring["outcome"]
+                            result["success"] = scoring["outcome"] == "SUCCESS"
+                        else:
+                            score = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version=rubric_version)
+                            result["score"] = score
+                            result["success"] = score == "SUCCESS"
+
                         print_response(model_id, result["response"], result["success"])
                     except Exception as exc:
                         result = {
@@ -148,7 +175,14 @@ def run_experiments(
 
 
 def save_results(results: list[dict], rubric_version: str = "v1") -> str:
-    out_dir = "results/formal_v2" if rubric_version == "v2" else "results/formal"
+    # Detect Phase IIB runs by presence of language_code field
+    _has_p2b = any(r.get("language_code") for r in results)
+    if _has_p2b:
+        out_dir = "results/formal_p2b"
+    elif rubric_version == "v2":
+        out_dir = "results/formal_v2"
+    else:
+        out_dir = "results/formal"
     os.makedirs(out_dir, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"{out_dir}/{timestamp}.json"
@@ -183,13 +217,38 @@ def main() -> None:
                         help="Agent domains to test against")
     parser.add_argument("--reps", type=int, default=config.DEFAULT_REPS,
                         help="Repetitions per combination")
+    parser.add_argument("--rep-start", type=int, default=0,
+                        help="Starting rep index (use to top up existing runs, e.g. --rep-start 3 --reps 2 adds Rep 4 & 5)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print experiment config without making any API calls")
     parser.add_argument("--max-tokens", type=int, default=config.CHAT_MAX_TOKENS,
                         help="Max tokens per model response (default: config.CHAT_MAX_TOKENS)")
     parser.add_argument("--rubric", choices=["v1", "v2"], default="v1",
                         help="Scoring rubric version (v2 saves to results/formal_v2/)")
+    parser.add_argument("--phase", choices=["p1", "p2a", "p2b"], default=None,
+                        help=(
+                            "Preset phase config: "
+                            "p1=Phase I baseline attacks, "
+                            "p2a=Phase IIA schema attacks, "
+                            "p2b=Phase IIB multilingual (all languages, saves to results/formal_p2b/)"
+                        ))
     args = parser.parse_args()
+
+    # Phase preset overrides --attacks, --domains, --rubric
+    if args.phase == "p1":
+        args.attacks = config.DEFAULT_ATTACKS
+        args.domains = config.PHASE1_DOMAINS
+        args.rubric  = "v2"
+    elif args.phase == "p2a":
+        from ..attacks import PHASE2A_ATTACKS
+        args.attacks = PHASE2A_ATTACKS
+        args.domains = config.PHASE2A_DOMAINS
+        args.rubric  = "v2"
+    elif args.phase == "p2b":
+        from ..attacks import PHASE2B_ATTACKS
+        args.attacks = PHASE2B_ATTACKS
+        args.domains = config.PHASE2B_DOMAINS
+        args.rubric  = "v2"
 
     config.CHAT_MAX_TOKENS = args.max_tokens
 
@@ -198,14 +257,14 @@ def main() -> None:
         console.print(f"[yellow]Models:[/yellow]     {args.models}")
         console.print(f"[yellow]Attacks:[/yellow]    {args.attacks}")
         console.print(f"[yellow]Domains:[/yellow]    {args.domains}")
-        console.print(f"[yellow]Reps:[/yellow]       {args.reps}")
+        console.print(f"[yellow]Reps:[/yellow]       {args.reps} (rep {args.rep_start + 1}–{args.rep_start + args.reps})")
         console.print(f"[yellow]Max tokens:[/yellow] {args.max_tokens}")
         console.print(f"[yellow]Rubric:[/yellow]     {args.rubric}")
         console.print(f"[yellow]Total:[/yellow]      {total} API calls")
         return
 
     results = run_experiments(args.models, args.attacks, args.domains, args.reps,
-                              rubric_version=args.rubric)
+                              rep_start=args.rep_start, rubric_version=args.rubric)
     save_results(results, rubric_version=args.rubric)
     print_summary(results)
 

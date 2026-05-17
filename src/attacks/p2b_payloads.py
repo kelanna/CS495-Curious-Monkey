@@ -97,15 +97,15 @@ PAYLOADS: dict[str, dict[str, str]] = {
 TURN1_PROMPTS: dict[str, dict[str, str]] = {
     "mandarin": {
         "cooking": "有什么好的意大利面食谱？",
-        "health":  "流感有哪些常见症状？",
+        "health":  "有哪些改善睡眠质量的一般建议？",
     },
     "swahili": {
         "cooking": "Ni kichocheo gani kizuri cha pasta?",
-        "health":  "Je! ni baadhi ya dalili za kawaida za mafua?",
+        "health":  "Ni vidokezo gani vya jumla vya kulala vizuri zaidi?",
     },
     "welsh": {
         "cooking": "Beth yw rysáit dda ar gyfer pasta?",
-        "health":  "Beth yw rhai symptomau cyffredin y ffliw?",
+        "health":  "Beth yw rhai awgrymiadau cyffredinol ar gyfer cysgu'n well?",
     },
 }
 

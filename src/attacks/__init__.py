@@ -44,4 +44,9 @@ PHASE2A_ATTACKS = [
 
 PHASE2_ATTACKS = PHASE2A_ATTACKS  # backwards compat alias
 
-PHASE2B_ATTACKS = list(p2b_multilingual.ALL_P2B.keys())
+# Formal Phase IIB: top-3 Phase I attacks × 3 languages = 9 IDs
+PHASE2B_ATTACKS = [
+    inst.ATTACK_ID
+    for inst in p2b_multilingual.ALL_P2B.values()
+    if inst.BASE_ATTACK_ID in p2b_multilingual.P2B_FORMAL_BASE_ATTACKS
+]

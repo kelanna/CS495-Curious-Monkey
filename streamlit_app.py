@@ -657,6 +657,32 @@ elif phase == "Phase III - Fine-Tuning":
 st.divider()
 st.markdown("### Results Dashboard")
 
+with st.expander("🗄️ Results Database (SQLite)", expanded=False):
+    try:
+        from src.db import store as _store
+        _db = _store.db_stats()
+        _db_c1, _db_c2, _db_c3 = st.columns(3)
+        with _db_c1:
+            st.metric("Total Records", _db["total"])
+        with _db_c2:
+            _last = (_db["last_import"] or "Never")[:19]
+            st.metric("Last Synced", _last)
+        with _db_c3:
+            if st.button("Sync DB from JSON files", use_container_width=True):
+                _n = _store.import_all_json()
+                st.success(f"Imported {_n} new record(s) into {_store.DB_PATH}")
+                st.rerun()
+        if _db["by_phase"]:
+            st.caption("Records by phase:  " + "  ·  ".join(
+                f"**{k.upper()}**: {v}" for k, v in sorted(_db["by_phase"].items())
+            ))
+        if _db["by_source"]:
+            st.caption("Records by source: " + "  ·  ".join(
+                f"{k}: {v}" for k, v in _db["by_source"].items()
+            ))
+    except Exception as _db_exc:
+        st.caption(f"SQLite unavailable: {_db_exc}")
+
 df_all        = load_results()
 df_formal     = df_all[df_all["source"] == "formal"]     if not df_all.empty else df_all
 df_formal_v2  = df_all[df_all["source"] == "formal_v2"]  if not df_all.empty else df_all
@@ -1035,7 +1061,7 @@ with tab_p2:
         }
         _excl_p2b = {"AMBIGUOUS","NO_RESPONSE","CONFOUND","TRANSLATION_ERROR","UNCERTAIN_LANG","ERROR"}
 
-        p2b_s1, p2b_s2 = st.tabs(["ASR by Language", "Data Replay"])
+        p2b_s1, p2b_s2, p2b_s3 = st.tabs(["ASR by Language", "Model Analysis", "Data Replay"])
 
         with p2b_s1:
             _p2b_lang_filter = st.radio(
@@ -1097,6 +1123,101 @@ with tab_p2:
                 _png_download_btn("Download as PNG", fig_p2b, "p2b_asr_by_language.png", height=520)
 
         with p2b_s2:
+            st.markdown("##### Model Vulnerability — Phase IIB")
+            _p2b_model_df = df_formal_p2b[~df_formal_p2b["score"].isin(_excl_p2b)] if not df_formal_p2b.empty else df_formal_p2b
+            if _p2b_model_df.empty:
+                st.info("No Phase IIB data yet. Run: `python -m src.main --phase p2b`")
+            else:
+                _p2b_stats  = _model_asr_sem(_p2b_model_df)
+                _p2b_mdls   = sorted(_p2b_stats.keys())
+                if _p2b_stats:
+                    fig_p2b_mc = go.Figure(go.Bar(
+                        x=_p2b_mdls,
+                        y=[_p2b_stats[m][0] for m in _p2b_mdls],
+                        error_y=dict(type="data", array=[_p2b_stats[m][1] * 2 for m in _p2b_mdls],
+                                     visible=True, color="#ffffff", thickness=1.5),
+                        marker_color="#ef233c",
+                        text=[f"{int(_p2b_stats[m][0])}%" for m in _p2b_mdls],
+                        textposition="outside",
+                    ))
+                    fig_p2b_mc.update_layout(
+                        plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
+                        yaxis=dict(range=[0, 130], title="Avg ASR %", gridcolor="#222"),
+                        xaxis=dict(title="Model"), showlegend=False, height=420,
+                    )
+                    st.plotly_chart(fig_p2b_mc, use_container_width=True)
+                    st.caption("Error bars = ±2 SEM (95% CI). Averaged over all Phase IIB attacks, languages, and domains.")
+                    _png_download_btn("Download as PNG", fig_p2b_mc, "p2b_model_comparison.png", height=480)
+
+                # Shared prep: base attack name + language display
+                _p2b_hm_df = _p2b_model_df.copy()
+                _p2b_hm_df["_base"]      = _p2b_hm_df["attack_id"].map(_P2B_BASE_LOOKUP)
+                _p2b_hm_df["_base_name"] = _p2b_hm_df["_base"].map(_TOP3_NAMES).fillna(_p2b_hm_df["attack_id"])
+                _p2b_hm_df["_lang_disp"] = _p2b_hm_df["language"].map(_LANG_DISP).fillna(_p2b_hm_df["language"])
+
+                def _p2b_heatmap(pivot_df: pd.DataFrame, x_title: str, key: str) -> None:
+                    if pivot_df.empty:
+                        return
+                    atks = list(pivot_df.index)
+                    cols = list(pivot_df.columns)
+                    z    = pivot_df.values.tolist()
+                    text_ = [[f"{int(v)}%" if pd.notna(v) else "—" for v in row] for row in z]
+                    z_s   = [[v if pd.notna(v) else -1   for v in row] for row in z]
+                    fig = go.Figure(go.Heatmap(
+                        z=z_s, x=cols, y=atks,
+                        text=text_, texttemplate="%{text}",
+                        textfont={"size": 15, "color": "white"},
+                        colorscale=[[0, "#1a4a1a"], [0.34, "#4a7a1a"], [0.67, "#7a4a1a"], [1, "#7a1a1a"]],
+                        zmin=0, zmax=100, showscale=True,
+                        colorbar=dict(
+                            title=dict(text="ASR %", font=dict(color="#fff")),
+                            tickvals=[0, 33, 67, 100],
+                            ticktext=["0% Robust", "33%", "67%", "100% Vulnerable"],
+                            tickfont=dict(color="#fff"),
+                        ),
+                        hoverongaps=False,
+                        hovertemplate=f"<b>%{{y}}</b><br>{x_title}: %{{x}}<br>ASR: %{{text}}<extra></extra>",
+                    ))
+                    fig.update_layout(
+                        plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                        height=max(300, len(atks) * 80),
+                        xaxis=dict(title=x_title, tickfont=dict(size=13)),
+                        yaxis=dict(title="Attack Vector", tickfont=dict(size=13), autorange="reversed"),
+                        margin=dict(l=20, r=20, t=20, b=20),
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    _png_download_btn(f"Download PNG", fig, f"p2b_{key}_heatmap.png",
+                                      height=max(400, len(atks) * 90))
+                    csv = pivot_df.reset_index().to_csv(index=False).encode()
+                    st.download_button(f"Download CSV", csv, f"p2b_{key}_heatmap.csv", "text/csv",
+                                       key=f"p2b_{key}_csv")
+
+                st.divider()
+                st.markdown("##### Attack × Language Heatmap")
+                _lang_pivot = (
+                    _p2b_hm_df.groupby(["_base_name", "_lang_disp"])["success"]
+                    .mean().mul(100).round(0).astype(int).reset_index()
+                    .pivot(index="_base_name", columns="_lang_disp", values="success")
+                )
+                _lang_pivot.columns.name = None
+                _lang_pivot.index.name   = None
+                _p2b_heatmap(_lang_pivot, "Language", "attack_language")
+                st.caption("Each cell = avg ASR across all models and domains for that attack × language pair.")
+
+                st.divider()
+                st.markdown("##### Attack × Domain Heatmap")
+                _dom_pivot = (
+                    _p2b_hm_df.groupby(["_base_name", "domain"])["success"]
+                    .mean().mul(100).round(0).astype(int).reset_index()
+                    .pivot(index="_base_name", columns="domain", values="success")
+                )
+                _dom_pivot.columns = [DOMAIN_LABELS.get(c, c) for c in _dom_pivot.columns]
+                _dom_pivot.columns.name = None
+                _dom_pivot.index.name   = None
+                _p2b_heatmap(_dom_pivot, "Domain", "attack_domain")
+                st.caption("Each cell = avg ASR across all models and languages for that attack × domain pair.")
+
+        with p2b_s3:
             _p2b_rp_lang = st.radio(
                 "Language", ["All", "Mandarin", "Swahili", "Welsh"],
                 horizontal=True, key="p2b_rp_lang",

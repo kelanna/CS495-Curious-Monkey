@@ -179,16 +179,27 @@ def save_results(results: list[dict], rubric_version: str = "v1") -> str:
     _has_p2b = any(r.get("language_code") for r in results)
     if _has_p2b:
         out_dir = "results/formal_p2b"
+        source  = "formal_p2b"
     elif rubric_version == "v2":
         out_dir = "results/formal_v2"
+        source  = "formal_v2"
     else:
         out_dir = "results/formal"
+        source  = "formal"
     os.makedirs(out_dir, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"{out_dir}/{timestamp}.json"
     with open(path, "w") as f:
         json.dump(results, f, indent=2)
     console.print(f"\n[dim]Results saved → {path}[/dim]")
+
+    try:
+        from ..db import store as _store
+        _store.insert_runs(results, source=source, result_file=path)
+        console.print(f"[dim]SQLite updated → {_store.DB_PATH}[/dim]")
+    except Exception as _exc:
+        console.print(f"[dim yellow]SQLite write skipped: {_exc}[/dim yellow]")
+
     return path
 
 

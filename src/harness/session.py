@@ -19,6 +19,12 @@ def _client(model_id: str) -> OpenAI:
     return OpenAI(base_url=config.LOCAL_BASE_URL, api_key=config.LOCAL_API_KEY)
 
 
+def _max_tokens(model_id: str) -> int:
+    if model_id in config.LOCAL_MODELS:
+        return config.LOCAL_MAX_TOKENS
+    return config.CHAT_MAX_TOKENS
+
+
 def chat(model_id: str, system_prompt: str, user_message: str) -> str:
     client = _client(model_id)
     response = client.chat.completions.create(
@@ -28,7 +34,7 @@ def chat(model_id: str, system_prompt: str, user_message: str) -> str:
             {"role": "user", "content": user_message},
         ],
         temperature=config.CHAT_TEMPERATURE,
-        max_tokens=config.CHAT_MAX_TOKENS,
+        max_tokens=_max_tokens(model_id),
     )
     return response.choices[0].message.content or ""
 
@@ -45,6 +51,6 @@ def chat_turns(model_id: str, system_prompt: str, turns: list[dict]) -> str:
         model=model_id,
         messages=messages,
         temperature=config.CHAT_TEMPERATURE,
-        max_tokens=config.CHAT_MAX_TOKENS,
+        max_tokens=_max_tokens(model_id),
     )
     return response.choices[0].message.content or ""

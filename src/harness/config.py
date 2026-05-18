@@ -24,8 +24,14 @@ DEFAULT_MODELS: list[str] = LOCAL_MODELS[:1]  # run one model at a time; pass --
 
 # Phase I domains (low-stake vs high-stake)
 PHASE1_DOMAINS: list[str] = ["cooking", "health"]
-# Phase II personas
-PHASE2_DOMAINS: list[str] = ["compliant_assistant", "truth_teller"]
+# Phase IIA personas
+PHASE2A_DOMAINS: list[str] = ["compliant_assistant", "truth_teller"]
+PHASE2_DOMAINS = PHASE2A_DOMAINS  # backwards compat alias
+
+# Phase IIB languages
+PHASE2B_LANGUAGES: list[str] = ["mandarin", "swahili", "welsh"]
+# Phase IIB re-uses Phase I domains
+PHASE2B_DOMAINS: list[str] = PHASE1_DOMAINS
 
 DEFAULT_DOMAINS: list[str] = PHASE1_DOMAINS
 DEFAULT_ATTACKS: list[str] = [
@@ -35,7 +41,8 @@ DEFAULT_ATTACKS: list[str] = [
     "attack4_extraction",
     "attack5_base64",
 ]
-DEFAULT_REPS: int = 3
+DEFAULT_REPS: int = 5
 
 CHAT_TEMPERATURE: float = 0.7
-CHAT_MAX_TOKENS: int = 200
+CHAT_MAX_TOKENS: int = 200          # remote models — reasoning is handled server-side
+LOCAL_MAX_TOKENS: int = 8192        # local reasoning models — reasoning eats into this budget

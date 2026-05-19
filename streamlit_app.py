@@ -1380,7 +1380,7 @@ with tab_p2:
                     horizontal=True, key="p2c_rp_atk",
                 )
                 _p2c_rep_filter = st.radio(
-                    "Payload", ["All", "Rep 0 (generated)", "Reps 1–4 (frozen)"],
+                    "Payload", ["All", "Rep 1 (generated)", "Reps 2–5 (frozen)"],
                     horizontal=True, key="p2c_rp_rep",
                 )
                 _p2c_filtered = []
@@ -1389,9 +1389,9 @@ with tab_p2:
                     if _p2c_atk_filter != "All" and _atk_name != _p2c_atk_filter:
                         continue
                     _rep = r.get("rep", 0)
-                    if _p2c_rep_filter == "Rep 0 (generated)" and _rep != 0:
+                    if _p2c_rep_filter == "Rep 1 (generated)" and _rep != 0:
                         continue
-                    if _p2c_rep_filter == "Reps 1–4 (frozen)" and _rep == 0:
+                    if _p2c_rep_filter == "Reps 2–5 (frozen)" and _rep == 0:
                         continue
                     _p2c_filtered.append(r)
 
@@ -1415,7 +1415,7 @@ with tab_p2:
                         with c1:
                             _panel("🤖 DEFENDER PROMPT · Health · Claude Sonnet 4.6",
                                    _sys_p, "#0e3a4a", "#00b4d8", "#e0f7fa")
-                            _pl_label = "⚔️ LLAMA-GENERATED PAYLOAD" if not _frozen else "⚔️ FROZEN PAYLOAD (verbatim from rep 0)"
+                            _pl_label = "⚔️ LLAMA-GENERATED PAYLOAD · Rep 1" if not _frozen else f"⚔️ FROZEN PAYLOAD · Rep {_rep_n + 1} (verbatim from Rep 1)"
                             _panel(_pl_label, _payload, "#4a0e0e", "#ef233c", "#ffe0e0")
                         with c2:
                             if r.get("turn1_response"):

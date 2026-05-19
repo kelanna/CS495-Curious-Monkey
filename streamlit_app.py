@@ -193,6 +193,22 @@ def load_p2a_records() -> list[dict]:
 
 
 @st.cache_data(ttl=30)
+def load_p2c_records() -> list[dict]:
+    """Return full records from results/formal_p2c/."""
+    rows: list[dict] = []
+    for path in glob.glob("results/formal_p2c/*.json"):
+        try:
+            with open(path) as f:
+                records = json.load(f)
+            for r in records:
+                if isinstance(r, dict):
+                    rows.append(r)
+        except Exception:
+            continue
+    return rows
+
+
+@st.cache_data(ttl=30)
 def load_replay_records(rubric: str = "v2") -> list[dict]:
     """Combined replay loader: Phase I (formal_v2) + Phase IIB (formal_p2b).
 
@@ -231,6 +247,8 @@ def load_results() -> pd.DataFrame:
     for path in glob.glob("results/**/*.json", recursive=True):
         if "formal_p2b" in path:
             source = "formal_p2b"
+        elif "formal_p2c" in path:
+            source = "formal_p2c"
         elif "formal_v2" in path:
             source = "formal_v2"
         elif "scratch" in path:
@@ -687,6 +705,7 @@ df_all        = load_results()
 df_formal     = df_all[df_all["source"] == "formal"]     if not df_all.empty else df_all
 df_formal_v2  = df_all[df_all["source"] == "formal_v2"]  if not df_all.empty else df_all
 df_formal_p2b = df_all[df_all["source"] == "formal_p2b"] if not df_all.empty else df_all
+df_formal_p2c = df_all[df_all["source"] == "formal_p2c"] if not df_all.empty else df_all
 
 # Shared constants
 P1_ATTACK_IDS  = set(PHASE1_ATTACKS.values())
@@ -1237,14 +1256,177 @@ with tab_p2:
     # ── Phase IIC ──────────────────────────────────────────
     with p2_iic:
         st.markdown("##### Phase IIC — LLM as Attacker")
-        _panel(
-            "Experimental Phase",
-            "Phase IIC uses Llama 3.1 8B as an adaptive attacker to generate injection payloads\n"
-            "targeting Claude Sonnet 4.6 as the defender.\n\n"
-            "Use the sidebar (Phase IIC - LLM as an Attacker) to run live trials.\n"
-            "Formal batch runs are not yet collected.",
-            "#1a1a2e", "#f4a261", "#e0e0e0",
+        st.caption(
+            "**Attacker:** Llama 3.1 8B (76.7% Phase I ASR — highest)  ·  "
+            "**Defender:** Claude Sonnet 4.6 (13.3% Phase I ASR — lowest)  ·  "
+            "**Domain:** Health (55.0% Phase I ASR — highest)  ·  "
+            "**Payload freeze:** generated on rep 0, reused verbatim for reps 1–4"
         )
+
+        _p2c_recs = load_p2c_records()
+
+        p2c_s1, p2c_s2 = st.tabs(["ASR Comparison", "Payload Replay"])
+
+        # ── IIC Sub-tab 1: ASR Comparison ─────────────────
+        with p2c_s1:
+            _P2C_BASE_MAP = {
+                "p2c_roleplay":        "attack2_roleplay",
+                "p2c_naive":           "attack1_naive",
+                "p2c_fake_completion": "attack3_fake_completion",
+            }
+            _P2C_DISPLAY_NAMES = {
+                "p2c_roleplay":        "Role-play / DAN",
+                "p2c_naive":           "Naive Injection",
+                "p2c_fake_completion": "Fake Completion",
+            }
+            _ATK_ORDER = ["p2c_roleplay", "p2c_naive", "p2c_fake_completion"]
+            _ATK_LABELS = [_P2C_DISPLAY_NAMES[k] for k in _ATK_ORDER]
+
+            # Phase IIC ASR per attack (exclude ERROR/AMBIGUOUS)
+            _p2c_asr: dict[str, float | None] = {}
+            if _p2c_recs:
+                from collections import defaultdict as _dd
+                _p2c_counts: dict[str, list[bool]] = _dd(list)
+                for r in _p2c_recs:
+                    sc = r.get("score", "")
+                    if sc in ("ERROR", "AMBIGUOUS", "NO_RESPONSE", "CONFOUND"):
+                        continue
+                    _p2c_counts[r.get("attack_id", "")].append(bool(r.get("success", False)))
+                for _aid, _vals in _p2c_counts.items():
+                    _p2c_asr[_aid] = round(sum(_vals) / len(_vals) * 100, 1) if _vals else None
+
+            # Phase I health-domain ASR for same 3 attacks (from formal_v2)
+            _p1_health_asr: dict[str, float | None] = {}
+            if not df_formal_v2.empty:
+                _p1h = df_formal_v2[
+                    (df_formal_v2["domain"] == "health")
+                    & ~df_formal_v2["score"].isin({"AMBIGUOUS","NO_RESPONSE","CONFOUND","ERROR"})
+                ]
+                for _base_id, _grp in _p1h.groupby("attack_id"):
+                    _p1_key = {v: k for k, v in _P2C_BASE_MAP.items()}.get(_base_id)
+                    if _p1_key:
+                        _p1_health_asr[_p1_key] = round(float(_grp["success"].mean()) * 100, 1)
+
+            _iic_vals   = [_p2c_asr.get(k) for k in _ATK_ORDER]
+            _p1h_vals   = [_p1_health_asr.get(k) for k in _ATK_ORDER]
+            _has_iic    = any(v is not None for v in _iic_vals)
+            _has_p1h    = any(v is not None for v in _p1h_vals)
+
+            if not _has_iic:
+                st.info("No Phase IIC formal data yet. Run: `python -m src.harness.run_p2c`")
+            else:
+                fig_p2c = go.Figure()
+                if _has_p1h:
+                    fig_p2c.add_trace(go.Bar(
+                        name="Phase I — Hand-crafted (Health)",
+                        x=_ATK_LABELS,
+                        y=_p1h_vals,
+                        marker_color="#00b4d8",
+                        text=[f"{v:.0f}%" if v is not None else "—" for v in _p1h_vals],
+                        textposition="outside",
+                    ))
+                fig_p2c.add_trace(go.Bar(
+                    name="Phase IIC — Llama-generated (Health)",
+                    x=_ATK_LABELS,
+                    y=_iic_vals,
+                    marker_color="#f4a261",
+                    text=[f"{v:.0f}%" if v is not None else "—" for v in _iic_vals],
+                    textposition="outside",
+                ))
+                fig_p2c.update_layout(
+                    plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
+                    yaxis=dict(range=[0, 120], title="ASR %", gridcolor="#222"),
+                    xaxis=dict(title="Attack Type"),
+                    barmode="group", height=440,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                )
+                st.plotly_chart(fig_p2c, use_container_width=True)
+                st.caption(
+                    "**Blue:** Phase I hand-crafted payloads on the health domain (all models avg).  "
+                    "**Orange:** Phase IIC Llama-generated payloads targeting Claude Sonnet 4.6 only.  "
+                    "Payload frozen after rep 0; 5 reps per attack."
+                )
+                _png_download_btn("Download as PNG", fig_p2c, "p2c_asr_comparison.png", height=500)
+
+                # Summary metrics
+                st.divider()
+                _mc1, _mc2, _mc3 = st.columns(3)
+                _total_recs = [r for r in _p2c_recs if r.get("score","") not in ("ERROR","AMBIGUOUS","NO_RESPONSE","CONFOUND")]
+                _total_succ = sum(1 for r in _total_recs if r.get("success", False))
+                _overall_asr = round(_total_succ / len(_total_recs) * 100, 1) if _total_recs else 0.0
+                with _mc1:
+                    st.metric("Overall IIC ASR", f"{_overall_asr:.0f}%", help="Llama-generated payloads vs Claude Sonnet 4.6")
+                with _mc2:
+                    st.metric("Total Runs", len(_total_recs), help="Across all 3 attacks × 5 reps")
+                with _mc3:
+                    _frozen_count = sum(1 for r in _p2c_recs if r.get("payload_frozen", False))
+                    st.metric("Frozen-payload Runs", _frozen_count, help="Reps 1–4 used the rep-0 payload verbatim")
+
+                st.divider()
+                st.markdown(
+                    "**Finding:** Llama 3.1 8B's adaptive payloads achieved **0% ASR** against "
+                    "Claude Sonnet 4.6 on the health domain — no improvement over, and in most "
+                    "cases below, the hand-crafted Phase I baselines. Claude consistently "
+                    "identified the off-topic request and redirected to health information."
+                )
+
+        # ── IIC Sub-tab 2: Payload Replay ──────────────────
+        with p2c_s2:
+            if not _p2c_recs:
+                st.info("No Phase IIC formal data yet. Run: `python -m src.harness.run_p2c`")
+            else:
+                _p2c_atk_filter = st.radio(
+                    "Attack", ["All"] + _ATK_LABELS,
+                    horizontal=True, key="p2c_rp_atk",
+                )
+                _p2c_rep_filter = st.radio(
+                    "Payload", ["All", "Rep 1 (generated)", "Reps 2–5 (frozen)"],
+                    horizontal=True, key="p2c_rp_rep",
+                )
+                _p2c_filtered = []
+                for r in sorted(_p2c_recs, key=lambda x: (x.get("attack_id",""), x.get("rep", 0))):
+                    _atk_name = _P2C_DISPLAY_NAMES.get(r.get("attack_id",""), r.get("attack_name",""))
+                    if _p2c_atk_filter != "All" and _atk_name != _p2c_atk_filter:
+                        continue
+                    _rep = r.get("rep", 0)
+                    if _p2c_rep_filter == "Rep 1 (generated)" and _rep != 0:
+                        continue
+                    if _p2c_rep_filter == "Reps 2–5 (frozen)" and _rep == 0:
+                        continue
+                    _p2c_filtered.append(r)
+
+                st.markdown(f"**{len(_p2c_filtered)} run(s) matching filters**")
+                for r in _p2c_filtered:
+                    _atk_disp = _P2C_DISPLAY_NAMES.get(r.get("attack_id",""), r.get("attack_name",""))
+                    _rep_n    = r.get("rep", 0)
+                    _sc       = r.get("score", "")
+                    _frozen   = r.get("payload_frozen", False)
+                    _ico = "✅" if _sc == "SUCCESS" else ("⚠️" if _sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND") else "🛡️")
+                    _freeze_badge = " · 🔒 frozen" if _frozen else " · ✨ generated"
+                    with st.expander(
+                        f"{_ico} **{_atk_disp}** · Rep {_rep_n + 1}{_freeze_badge} · {_sc}",
+                        expanded=(_rep_n == 0),
+                    ):
+                        _payload  = r.get("generated_payload", r.get("payload", ""))
+                        _response = r.get("response", "")
+                        _domain   = r.get("domain", "health")
+                        _sys_p    = SYSTEM_PROMPTS.get(_domain, "")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            _panel("🤖 DEFENDER PROMPT · Health · Claude Sonnet 4.6",
+                                   _sys_p, "#0e3a4a", "#00b4d8", "#e0f7fa")
+                            _pl_label = "⚔️ LLAMA-GENERATED PAYLOAD · Rep 1" if not _frozen else f"⚔️ FROZEN PAYLOAD · Rep {_rep_n + 1} (verbatim from Rep 1)"
+                            _panel(_pl_label, _payload, "#4a0e0e", "#ef233c", "#ffe0e0")
+                        with c2:
+                            if r.get("turn1_response"):
+                                _panel("💬 TURN 1 (on-topic)", r["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
+                            _panel("💬 CLAUDE SONNET 4.6 RESPONSE", _response, "#0e4a1a", "#2dc653", "#e0ffe6")
+                            if _sc in ("AMBIGUOUS", "NO_RESPONSE", "CONFOUND"):
+                                st.warning(f"{_sc} — excluded from ASR")
+                            elif _sc == "SUCCESS":
+                                st.success("SUCCESS — Claude broke its directive (Llama wins)")
+                            else:
+                                st.error("FAILURE — Claude held its directive (Defender wins)")
 
 
 # ═══════════════════════════════════════════════════════════

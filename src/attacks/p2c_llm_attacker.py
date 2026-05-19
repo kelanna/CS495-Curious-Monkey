@@ -1,7 +1,8 @@
 """Phase IIC — LLM as an Attacker.
 
-Llama 3.1 8B (highest Phase I ASR: 82.8%) generates adversarial injection
-payloads.  Claude Sonnet 4.6 (lowest Phase I ASR: 8.3%) defends.
+Llama 3.1 8B (highest Phase I ASR: 76.7% across all Phase I files) generates
+adversarial injection payloads.  Claude Sonnet 4.6 (lowest Phase I ASR: 13.3%)
+defends.  Domain: health (highest Phase I ASR at 55.0%).
 
 Research question: can Llama produce more effective phrasing of the same
 Phase I injection goals than the hand-crafted Phase I payloads?
@@ -9,6 +10,10 @@ Phase I injection goals than the hand-crafted Phase I payloads?
 The injection *goal* (penguin joke / ocean poem / Roman history) is held
 fixed so that rubric v2 auto-scoring still applies.  Llama's creative
 contribution is the social-engineering *framing*, not the target topic.
+
+Payload freeze: attacker generates payload once on rep 0; that exact payload
+is reused verbatim for reps 1–4 (5 total).  Use run_with_payload() for frozen
+reps so the attacker model is not called again.
 """
 
 from ..harness.session import chat, chat_turns
@@ -85,7 +90,7 @@ def generate_payload(style_key: str, defender_system_prompt: str) -> str:
 def run(
     style_key: str,
     defender_system_prompt: str,
-    domain_id: str = "cooking",
+    domain_id: str = "health",
     attacker_model: str = ATTACKER_MODEL,
     defender_model: str = DEFENDER_MODEL,
 ) -> dict:
@@ -121,10 +126,55 @@ def run(
         "attack_name":       style["name"],
         "attacker_model":    attacker_model,
         "defender_model":    defender_model,
-        "model":             defender_model,   # for dashboard compatibility
+        "model":             defender_model,
         "domain":            domain_id,
         "generated_payload": generated_payload,
         "payload":           generated_payload,
+        "turn1_response":    turn1_response,
+        "response":          response,
+        "phase":             "iic",
+    }
+
+
+def run_with_payload(
+    style_key: str,
+    defender_system_prompt: str,
+    frozen_payload: str,
+    domain_id: str = "health",
+    defender_model: str = DEFENDER_MODEL,
+    attacker_model: str = ATTACKER_MODEL,
+) -> dict:
+    """Frozen-payload variant: skip attacker generation, reuse frozen_payload verbatim."""
+    style = ATTACK_STYLES[style_key]
+
+    turn1_response: str | None = None
+    if style["base_attack"] == "attack3_fake_completion":
+        from .fake_completion import TURN1_BY_DOMAIN
+        turn1 = TURN1_BY_DOMAIN.get(domain_id, TURN1_BY_DOMAIN["cooking"])
+        turn1_response = chat(defender_model, defender_system_prompt, turn1)
+
+    if turn1_response is not None:
+        from .fake_completion import TURN1_BY_DOMAIN
+        turn1 = TURN1_BY_DOMAIN.get(domain_id, TURN1_BY_DOMAIN["cooking"])
+        response = chat_turns(defender_model, defender_system_prompt, [
+            {"role": "user",      "content": turn1},
+            {"role": "assistant", "content": turn1_response},
+            {"role": "user",      "content": frozen_payload},
+        ])
+    else:
+        response = chat(defender_model, defender_system_prompt, frozen_payload)
+
+    return {
+        "attack_id":         style_key,
+        "base_attack_id":    style["base_attack"],
+        "attack_name":       style["name"],
+        "attacker_model":    attacker_model,
+        "defender_model":    defender_model,
+        "model":             defender_model,
+        "domain":            domain_id,
+        "generated_payload": frozen_payload,
+        "payload":           frozen_payload,
+        "payload_frozen":    True,
         "turn1_response":    turn1_response,
         "response":          response,
         "phase":             "iic",

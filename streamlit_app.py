@@ -64,7 +64,8 @@ MODEL_DISPLAY: dict[str, str] = {
     "Gemini 3 Flash Preview (remote)": "google/gemini-3-flash-preview",
     "DeepSeek V4 Pro (remote)":        "deepseek/deepseek-v4-pro",
     "Llama 3.1 8B (local)":            "meta-llama-3.1-8b-instruct",
-    "Qwen 3.5 9B (local)":             "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
+    "Qwen 3.5 9B Distilled (local)":   "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
+    "Qwen 3.6 27B MTP (local)":        "qwen3.6-27b-mtp",
 }
 MODEL_ID_TO_DISPLAY: dict[str, str] = {v: k for k, v in MODEL_DISPLAY.items()}
 
@@ -1088,23 +1089,29 @@ with tab_p2:
                 ["All languages", "Mandarin (中文)", "Swahili (Kiswahili)", "Welsh (Cymraeg)"],
                 horizontal=True, key="p2b_asr_lang",
             )
-            # Phase I English baseline for top-3
-            _p1_base: dict[str, float] = {}
+            # Phase I English baseline for top-3 (mean, SEM)
+            _p1_base: dict[str, tuple[float, float]] = {}
             if not df_formal_v2.empty:
                 _p1f = df_formal_v2[
                     df_formal_v2["attack_id"].isin(_TOP3_IDS) & ~df_formal_v2["score"].isin(_excl_p2b)
                 ]
                 for _aid, _grp in _p1f.groupby("attack_id"):
-                    _p1_base[_aid] = round(float(_grp["success"].mean()) * 100, 1)
-            # Phase IIB ASR per (base_attack, language)
-            _p2b_asr: dict[tuple, float] = {}
+                    _v = _grp["success"].astype(float).values
+                    _p1_base[_aid] = (
+                        round(float(_v.mean() * 100), 1),
+                        round(float(_v.std(ddof=1) / np.sqrt(len(_v)) * 100) if len(_v) > 1 else 0.0, 1),
+                    )
+            # Phase IIB ASR per (base_attack, language) — (mean, SEM) tuples
+            _p2b_asr: dict[tuple, tuple[float, float]] = {}
             if not df_formal_p2b.empty:
                 _p2bf = df_formal_p2b.copy()
                 _p2bf["_base"] = _p2bf["attack_id"].map(_P2B_BASE_LOOKUP)
                 _p2bf_c = _p2bf[~_p2bf["score"].isin(_excl_p2b) & _p2bf["_base"].isin(_TOP3_IDS)]
                 for (_base, _lang), _grp in _p2bf_c.groupby(["_base", "language"]):
-                    _p2b_asr[(_base, _LANG_DISP.get(_lang, _lang))] = round(
-                        float(_grp["success"].mean()) * 100, 1
+                    _v = _grp["success"].astype(float).values
+                    _p2b_asr[(_base, _LANG_DISP.get(_lang, _lang))] = (
+                        round(float(_v.mean() * 100), 1),
+                        round(float(_v.std(ddof=1) / np.sqrt(len(_v)) * 100) if len(_v) > 1 else 0.0, 1),
                     )
             _atk_labels = [_TOP3_NAMES[k] for k in _TOP3_IDS]
             _series: dict[str, list] = {}
@@ -1124,10 +1131,14 @@ with tab_p2:
             else:
                 fig_p2b = go.Figure()
                 for _sn, _sv in _series.items():
+                    _means = [v[0] if isinstance(v, tuple) else v for v in _sv]
+                    _sems  = [v[1] if isinstance(v, tuple) else 0.0 for v in _sv]
                     fig_p2b.add_trace(go.Bar(
-                        name=_sn, x=_atk_labels, y=_sv,
+                        name=_sn, x=_atk_labels, y=_means,
+                        error_y=dict(type="data", array=[s * 2 for s in _sems],
+                                     visible=True, color="#ffffff", thickness=1.5),
                         marker_color=_LANG_COLORS.get(_sn, "#888"),
-                        text=[f"{v:.0f}%" if v is not None else "—" for v in _sv],
+                        text=[f"{v:.0f}%" if v is not None else "—" for v in _means],
                         textposition="outside",
                     ))
                 fig_p2b.update_layout(
@@ -1138,7 +1149,7 @@ with tab_p2:
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 )
                 st.plotly_chart(fig_p2b, use_container_width=True)
-                st.caption("ASR = successes / non-ambiguous runs, averaged across all models and domains.")
+                st.caption("Error bars = ±2 SEM (95% CI). ASR = successes / non-ambiguous runs, averaged across all models and domains.")
                 _png_download_btn("Download as PNG", fig_p2b, "p2b_asr_by_language.png", height=520)
 
         with p2b_s2:
@@ -1282,8 +1293,8 @@ with tab_p2:
             _ATK_ORDER = ["p2c_roleplay", "p2c_naive", "p2c_fake_completion"]
             _ATK_LABELS = [_P2C_DISPLAY_NAMES[k] for k in _ATK_ORDER]
 
-            # Phase IIC ASR per attack (exclude ERROR/AMBIGUOUS)
-            _p2c_asr: dict[str, float | None] = {}
+            # Phase IIC ASR per attack — (mean, SEM) tuples
+            _p2c_asr: dict[str, tuple[float, float] | None] = {}
             if _p2c_recs:
                 from collections import defaultdict as _dd
                 _p2c_counts: dict[str, list[bool]] = _dd(list)
@@ -1292,11 +1303,18 @@ with tab_p2:
                     if sc in ("ERROR", "AMBIGUOUS", "NO_RESPONSE", "CONFOUND"):
                         continue
                     _p2c_counts[r.get("attack_id", "")].append(bool(r.get("success", False)))
-                for _aid, _vals in _p2c_counts.items():
-                    _p2c_asr[_aid] = round(sum(_vals) / len(_vals) * 100, 1) if _vals else None
+                for _aid, _cv in _p2c_counts.items():
+                    if not _cv:
+                        _p2c_asr[_aid] = None
+                    else:
+                        _cv_arr = np.array(_cv, dtype=float)
+                        _p2c_asr[_aid] = (
+                            round(float(_cv_arr.mean() * 100), 1),
+                            round(float(_cv_arr.std(ddof=1) / np.sqrt(len(_cv_arr)) * 100) if len(_cv_arr) > 1 else 0.0, 1),
+                        )
 
-            # Phase I health-domain ASR for same 3 attacks (from formal_v2)
-            _p1_health_asr: dict[str, float | None] = {}
+            # Phase I health-domain ASR for same 3 attacks — (mean, SEM) tuples
+            _p1_health_asr: dict[str, tuple[float, float] | None] = {}
             if not df_formal_v2.empty:
                 _p1h = df_formal_v2[
                     (df_formal_v2["domain"] == "health")
@@ -1305,12 +1323,18 @@ with tab_p2:
                 for _base_id, _grp in _p1h.groupby("attack_id"):
                     _p1_key = {v: k for k, v in _P2C_BASE_MAP.items()}.get(_base_id)
                     if _p1_key:
-                        _p1_health_asr[_p1_key] = round(float(_grp["success"].mean()) * 100, 1)
+                        _v_p1h = _grp["success"].astype(float).values
+                        _p1_health_asr[_p1_key] = (
+                            round(float(_v_p1h.mean() * 100), 1),
+                            round(float(_v_p1h.std(ddof=1) / np.sqrt(len(_v_p1h)) * 100) if len(_v_p1h) > 1 else 0.0, 1),
+                        )
 
-            _iic_vals   = [_p2c_asr.get(k) for k in _ATK_ORDER]
-            _p1h_vals   = [_p1_health_asr.get(k) for k in _ATK_ORDER]
-            _has_iic    = any(v is not None for v in _iic_vals)
-            _has_p1h    = any(v is not None for v in _p1h_vals)
+            _iic_means  = [(_p2c_asr.get(k) or (None, 0.0))[0] for k in _ATK_ORDER]
+            _iic_sems   = [(_p2c_asr.get(k) or (0.0, 0.0))[1] for k in _ATK_ORDER]
+            _p1h_means  = [(_p1_health_asr.get(k) or (None, 0.0))[0] for k in _ATK_ORDER]
+            _p1h_sems   = [(_p1_health_asr.get(k) or (0.0, 0.0))[1] for k in _ATK_ORDER]
+            _has_iic    = any(v is not None for v in _iic_means)
+            _has_p1h    = any(v is not None for v in _p1h_means)
 
             if not _has_iic:
                 st.info("No Phase IIC formal data yet. Run: `python -m src.harness.run_p2c`")
@@ -1320,17 +1344,21 @@ with tab_p2:
                     fig_p2c.add_trace(go.Bar(
                         name="Phase I — Hand-crafted (Health)",
                         x=_ATK_LABELS,
-                        y=_p1h_vals,
+                        y=_p1h_means,
+                        error_y=dict(type="data", array=[s * 2 for s in _p1h_sems],
+                                     visible=True, color="#ffffff", thickness=1.5),
                         marker_color="#00b4d8",
-                        text=[f"{v:.0f}%" if v is not None else "—" for v in _p1h_vals],
+                        text=[f"{v:.0f}%" if v is not None else "—" for v in _p1h_means],
                         textposition="outside",
                     ))
                 fig_p2c.add_trace(go.Bar(
                     name="Phase IIC — Llama-generated (Health)",
                     x=_ATK_LABELS,
-                    y=_iic_vals,
+                    y=_iic_means,
+                    error_y=dict(type="data", array=[s * 2 for s in _iic_sems],
+                                 visible=True, color="#ffffff", thickness=1.5),
                     marker_color="#f4a261",
-                    text=[f"{v:.0f}%" if v is not None else "—" for v in _iic_vals],
+                    text=[f"{v:.0f}%" if v is not None else "—" for v in _iic_means],
                     textposition="outside",
                 ))
                 fig_p2c.update_layout(
@@ -1342,6 +1370,7 @@ with tab_p2:
                 )
                 st.plotly_chart(fig_p2c, use_container_width=True)
                 st.caption(
+                    "Error bars = ±2 SEM (95% CI).  "
                     "**Blue:** Phase I hand-crafted payloads on the health domain (all models avg).  "
                     "**Orange:** Phase IIC Llama-generated payloads targeting Claude Sonnet 4.6 only.  "
                     "Payload frozen after rep 0; 5 reps per attack."

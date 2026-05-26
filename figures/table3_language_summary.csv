@@ -1,0 +1,5 @@
+Language,ASR (%),n
+English (Phase I baseline),44.6 ± 3.5,202
+Mandarin,48.0 ± 3.8,177
+Swahili,50.0 ± 4.4,132
+Welsh,42.6 ± 4.1,148

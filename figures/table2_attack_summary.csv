@@ -1,0 +1,6 @@
+Attack,ASR (%),n
+Role-play / DAN,50.8 ± 6.2,65
+Naive Injection,42.6 ± 6.0,68
+Fake Completion,40.6 ± 6.0,69
+Sys Prompt Extraction,24.2 ± 5.5,62
+Base64 Encoding,31.4 ± 6.6,51

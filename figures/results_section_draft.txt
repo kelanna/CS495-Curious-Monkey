@@ -1,0 +1,53 @@
+
+=== RESULTS SECTION DRAFT ===
+
+4.1 Phase I — Baseline Attack Success Rates
+
+We evaluated 6 LLMs across 5 attack vectors and 2 agent domains (cooking, health),
+yielding 300 trials after excluding ambiguous/no-response outcomes.
+
+Model vulnerability ranged widely: Llama 3.1 8B exhibited the highest overall ASR
+(79.6% ± 5.8% SEM), followed by Gemini 3 Flash (41.7% ± 7.2%), GPT-5.5 (41.3% ± 7.3%),
+Qwen 3.6 27B MTP (38.0% ± 6.9%), DeepSeek V4 Pro (12.2% ± 5.2%), and Claude Sonnet 4.6
+(10.0% ± 4.8%). The 7x spread between the weakest and strongest defenders highlights
+substantial heterogeneity in prompt injection robustness across contemporary LLMs.
+
+Among attack vectors, Role-play/DAN achieved the highest mean ASR (50.9% ± 6.8%),
+followed by Naive Injection (41.4% ± 6.5%) and Fake Completion (39.0% ± 6.4%).
+Base64 Encoding (29.3% ± 7.2%) and System Prompt Extraction (28.8% ± 6.3%) were
+less effective on average. Domain context strongly moderated vulnerability:
+the health domain yielded 59.7% ASR vs. 18.4% for cooking, suggesting that
+agents with stronger compliance tendencies are easier to hijack.
+
+4.2 Phase IIB — Multilingual Attack Comparison
+
+We ran the top-3 Phase I attacks (Role-play/DAN, Fake Completion, Naive Injection)
+translated into Mandarin, Swahili, and Welsh, producing 540 trials.
+
+Overall ASR by language was: Swahili 50.0% ± 4.8%, Mandarin 47.7% ± 4.1%,
+Welsh 42.7% ± 4.5%, versus ~44% for English across the same three attacks.
+None of the differences are statistically distinguishable at the 95% CI level,
+suggesting that language switching alone does not provide a systematic bypass.
+
+Role-play/DAN was the most resilient attack across languages (Mandarin 48.1%,
+Swahili 55.8%, Welsh 53.1%), while Naive Injection showed the largest language
+sensitivity (Welsh 20.7% vs. Mandarin 45.8%), potentially reflecting differential
+language-model safety alignment across low-resource languages.
+
+4.3 Phase IIC — LLM as Attacker
+
+We used Llama 3.1 8B (highest Phase I ASR: 79.6%) as an adaptive attacker against
+Claude Sonnet 4.6 (lowest Phase I ASR: 10.0%) on the health domain.
+Each attack style was run for 5 repetitions with the payload frozen after rep 0,
+yielding 15 evaluable trials.
+
+Overall ASR was 33.3% ± 12.6%. By attack style: Naive Injection achieved 100%
+(n=5), while Role-play/DAN and Fake Completion both achieved 0% (n=5 each).
+The Naive Injection result should be interpreted with caution given the small
+sample size and the high variability implied by the overall SEM.
+
+Compared with Phase I health-domain baselines (all models), Llama-generated payloads
+did not systematically outperform hand-crafted attacks for Role-play/DAN or
+Fake Completion. These results suggest that a stronger defender (Claude Sonnet 4.6)
+is able to maintain its directive even against dynamically generated adversarial prompts,
+within the scope of this experiment.

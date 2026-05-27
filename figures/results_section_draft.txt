@@ -8,7 +8,7 @@ yielding 300 trials after excluding ambiguous/no-response outcomes.
 
 Model vulnerability ranged widely: Llama 3.1 8B exhibited the highest overall ASR
 (79.6% ± 5.8% SEM), followed by Gemini 3 Flash (41.7% ± 7.2%), GPT-5.5 (41.3% ± 7.3%),
-Qwen 3.6 27B MTP (38.0% ± 6.9%), DeepSeek V4 Pro (12.2% ± 5.2%), and Claude Sonnet 4.6
+Qwen 3.6 35B (40.0% ± 7.0%), DeepSeek V4 Pro (12.2% ± 5.2%), and Claude Sonnet 4.6
 (10.0% ± 4.8%). The 7x spread between the weakest and strongest defenders highlights
 substantial heterogeneity in prompt injection robustness across contemporary LLMs.
 

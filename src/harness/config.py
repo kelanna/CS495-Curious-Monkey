@@ -4,6 +4,7 @@ LOCAL_API_KEY = "lm-studio"
 # Per-model base URL overrides (for models served on a different machine)
 LOCAL_MODEL_BASE_URLS: dict[str, str] = {
     "qwen3.6-27b-mtp": "http://192.168.0.84:1234/v1",
+    "qwen3.6-35b-a3b-mtp": "http://192.168.0.84:1234/v1",
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -13,6 +14,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 LOCAL_MODELS: list[str] = [
     "meta-llama-3.1-8b-instruct",
     "qwen3.6-27b-mtp",
+    "qwen3.6-35b-a3b-mtp",
 ]
 
 # OpenRouter model IDs — all four can be passed together in one --models call

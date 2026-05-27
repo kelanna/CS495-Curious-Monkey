@@ -1,8 +1,7 @@
 Model,Phase I ASR (%),Phase IIB ASR (%)
 Llama 3.1 8B,79.6 ± 5.8,90.5 ± 3.7
-GPT-5.5,41.3 ± 7.3,50.0 ± 5.5
-Gemini 3 Flash,41.7 ± 7.2,44.7 ± 5.7
-Qwen 3.5 9B Distilled,36.6 ± 7.6,51.9 ± 6.9
-Qwen 3.6 27B MTP,38.0 ± 6.9,47.3 ± 5.8
+GPT-5.5,41.3 ± 7.3,50.6 ± 5.4
+Gemini 3 Flash,41.7 ± 7.2,41.9 ± 5.4
+Qwen 3.6 35B,40.0 ± 7.0,48.8 ± 5.6
 DeepSeek V4 Pro,12.2 ± 5.2,18.8 ± 7.0
 Claude Sonnet 4.6,10.0 ± 4.8,16.2 ± 4.3

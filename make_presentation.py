@@ -316,7 +316,7 @@ def build_prs():
 
     # ── SLIDE 5 — Results Part 1 (Phase I) ────────────────────────────────
     sl = blank_slide(prs)
-    fill_bg(sl, LIGHT_GREY)
+    fill_bg(sl, WHITE)
     slide_header(sl, "Results — Phase I: Baseline Attacks",
                  "Llama 3.1 8B most vulnerable · Claude Sonnet 4.6 & DeepSeek most robust")
     footer_bar(sl, "")
@@ -339,7 +339,7 @@ def build_prs():
 
     # ── SLIDE 6 — Results Part 2 (Phase IIB + IIC + III) ──────────────────
     sl = blank_slide(prs)
-    fill_bg(sl, LIGHT_GREY)
+    fill_bg(sl, WHITE)
     slide_header(sl, "Results — Phase IIB · IIC · III",
                  "Multilingual & adversarial attacks · Qwen family comparison")
     footer_bar(sl, "")

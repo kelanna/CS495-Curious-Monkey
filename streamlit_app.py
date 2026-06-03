@@ -1898,7 +1898,7 @@ with tab_p4:
                                     )
                                     _panel(
                                         f"{_cmp_ico} PRE-FT BASELINE · Rep {_cmp.get('rep',0)+1} · {_cmp_sc}",
-                                        _cmp.get("response",""), "#1a1a3a", "#f4a261", "#2a1a00",
+                                        _cmp.get("response",""), "#1a1a3a", "#f4a261", "#ffe0b2",
                                     )
                             elif _p4_show_cmp:
                                 st.caption("No pre-FT baseline records for this attack + domain.")

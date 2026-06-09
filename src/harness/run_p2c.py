@@ -83,7 +83,7 @@ def run_phase_iic() -> list[dict]:
 
 
 def save_results(results: list[dict]) -> str:
-    out_dir = "results/formal_p2c"
+    out_dir = "results/formal_p2b"
     os.makedirs(out_dir, exist_ok=True)
     ts   = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"{out_dir}/{ts}.json"
@@ -93,7 +93,7 @@ def save_results(results: list[dict]) -> str:
 
     try:
         from ..db import store as _store
-        _store.insert_runs(results, source="formal_p2c", result_file=path)
+        _store.insert_runs(results, source="formal_p2b", result_file=path)
         console.print(f"[dim]SQLite updated → {_store.DB_PATH}[/dim]")
     except Exception as exc:
         console.print(f"[dim yellow]SQLite write skipped: {exc}[/dim yellow]")

@@ -13,7 +13,8 @@ A systematic benchmark of six LLMs against five direct prompt injection techniqu
 | RQ3 | Does agent domain context moderate injection vulnerability? |
 | RQ4 | Do multilingual attacks provide a systematic bypass advantage? |
 | RQ5 | Can an LLM functioning as an automated attacker exceed hand-crafted payloads? |
-| RQ6 | Can targeted LoRA fine-tuning substantially reduce vulnerability in a susceptible model? |
+| RQ6 | Does model parameter count affect attack success rate? |
+| RQ7 | Can targeted LoRA fine-tuning substantially reduce vulnerability in a susceptible model? |
 
 ## Models Evaluated
 
@@ -70,8 +71,8 @@ src/
   finetuning/       # LoRA fine-tuning pipeline (Unsloth)
 results/
   formal_v2/        # Phase I baseline + Phase IV fine-tuned results
-  formal_p2b/       # Phase IIA multilingual results
-  formal_p2c/       # Phase IIB LLM-as-attacker results
+  formal_p2a/       # Phase IIA multilingual results
+  formal_p2b/       # Phase IIB LLM-as-attacker results
   formal_p3/        # Phase III Qwen parameter-size results
 data/
   phase4_training.jsonl   # synthetic refusal training data

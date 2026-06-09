@@ -67,14 +67,14 @@ def init_db() -> None:
 # ── Source / phase inference ──────────────────────────────────────────────────
 
 def _infer_source(path: str) -> str:
-    for key in ("formal_p2b", "formal_v2", "scratch"):
+    for key in ("formal_p2a", "formal_v2", "scratch"):
         if key in path:
             return key
     return "formal"
 
 
 def _infer_phase(source: str, attack_id: str) -> str:
-    if source == "formal_p2b" or attack_id.startswith("p2b_"):
+    if source == "formal_p2a" or attack_id.startswith("p2b_"):
         return "p2b"
     if attack_id.startswith("p2_"):
         return "p2a"
@@ -87,7 +87,7 @@ def _infer_phase(source: str, attack_id: str) -> str:
 
 def _record_to_row(r: dict, source: str, result_file: str) -> dict:
     attack_id = r.get("attack_id", "")
-    is_p2b    = source == "formal_p2b" or attack_id.startswith("p2b_")
+    is_p2b    = source == "formal_p2a" or attack_id.startswith("p2b_")
     lang      = r.get("language_code", r.get("language", "")) or None
     return {
         "source":                     source,

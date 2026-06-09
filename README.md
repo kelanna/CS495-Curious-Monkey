@@ -13,7 +13,8 @@ A systematic benchmark of six LLMs against five direct prompt injection techniqu
 | RQ3 | Does agent domain context moderate injection vulnerability? |
 | RQ4 | Do multilingual attacks provide a systematic bypass advantage? |
 | RQ5 | Can an LLM functioning as an automated attacker exceed hand-crafted payloads? |
-| RQ6 | Can targeted LoRA fine-tuning substantially reduce vulnerability in a susceptible model? |
+| RQ6 | Does model parameter count affect attack success rate? |
+| RQ7 | Can targeted LoRA fine-tuning substantially reduce vulnerability in a susceptible model? |
 
 ## Models Evaluated
 
@@ -56,6 +57,7 @@ ASRs pooled across Phases I–III (1,005 total trials, Phase IV excluded as fine
 - **Domain is the strongest moderator**: health domain 59.7% ASR vs. cooking 18.4% — driven by system prompt structure (directive vs. disclaimer-based framing)
 - **Multilingual attacks show no systematic advantage** at the overall level, but attack-level interactions exist (Welsh amplifies Role-play/DAN, Mandarin amplifies Naive Injection)
 - **LLM-generated Naive Injection** achieved 100% against Claude (vs. 0% hand-crafted), but the generated payload was structurally a Role-play/DAN attack — the LLM independently converged on identity displacement
+- **Parameter count inversely predicts ASR**: Qwen series comparison (0.8B → 27B) shows smaller models are more vulnerable — lower parameter count correlates with higher ASR, larger models resist injection more effectively
 - **LoRA fine-tuning** reduced Llama 3.1 8B from 79.5% → 0% ASR across all attacks and domains on consumer laptop hardware
 - **Cost ≠ security**: DeepSeek V4 Pro matches Claude Sonnet 4.6 in robustness at a fraction of the API cost
 
@@ -70,8 +72,8 @@ src/
   finetuning/       # LoRA fine-tuning pipeline (Unsloth)
 results/
   formal_v2/        # Phase I baseline + Phase IV fine-tuned results
-  formal_p2b/       # Phase IIA multilingual results
-  formal_p2c/       # Phase IIB LLM-as-attacker results
+  formal_p2a/       # Phase IIA multilingual results
+  formal_p2b/       # Phase IIB LLM-as-attacker results
   formal_p3/        # Phase III Qwen parameter-size results
 data/
   phase4_training.jsonl   # synthetic refusal training data
@@ -124,5 +126,7 @@ The fine-tuned adapter is stored in `models/llama_ft/` (not tracked in git due t
 - **LM Studio** for local model inference (OpenAI-compatible endpoint)
 - **OpenRouter** for proprietary model access
 - **Unsloth** for LoRA fine-tuning on consumer GPU
+- **SQLite** for persistent result storage (`results/results.db`); synced from JSON logs via `src/db/store.py`
+- **Streamlit** for the results visualization dashboard
 - **Jupyter + pandas + matplotlib/seaborn** for analysis and figures
 - **LaTeX** for the paper

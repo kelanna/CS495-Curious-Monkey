@@ -174,12 +174,15 @@ def run_experiments(
     return results
 
 
-def save_results(results: list[dict], rubric_version: str = "v1") -> str:
+def save_results(results: list[dict], rubric_version: str = "v1", phase: str | None = None) -> str:
     # Detect Phase IIB runs by presence of language_code field
     _has_p2b = any(r.get("language_code") for r in results)
-    if _has_p2b:
-        out_dir = "results/formal_p2b"
-        source  = "formal_p2b"
+    if phase == "p3":
+        out_dir = "results/formal_p3"
+        source  = "formal_p3"
+    elif _has_p2b:
+        out_dir = "results/formal_p2a"
+        source  = "formal_p2a"
     elif rubric_version == "v2":
         out_dir = "results/formal_v2"
         source  = "formal_v2"
@@ -236,16 +239,18 @@ def main() -> None:
                         help="Max tokens per model response (default: config.CHAT_MAX_TOKENS)")
     parser.add_argument("--rubric", choices=["v1", "v2"], default="v1",
                         help="Scoring rubric version (v2 saves to results/formal_v2/)")
-    parser.add_argument("--phase", choices=["p1", "p2a", "p2b"], default=None,
+    parser.add_argument("--phase", choices=["p1", "p2a", "p2b", "p3"], default=None,
                         help=(
                             "Preset phase config: "
                             "p1=Phase I baseline attacks, "
                             "p2a=Phase IIA schema attacks (deprecated), "
-                            "p2b=Phase IIA multilingual (all languages, saves to results/formal_p2b/)"
+                            "p2b=Phase IIA multilingual (all languages, saves to results/formal_p2a/), "
+                            "p3=Phase III parameter-size comparison on Qwen 3.5 series "
+                            "(saves to results/formal_p3/; use --models to override the default set)"
                         ))
     args = parser.parse_args()
 
-    # Phase preset overrides --attacks, --domains, --rubric
+    # Phase preset overrides --attacks, --domains, --rubric (and --models for p3)
     if args.phase == "p1":
         args.attacks = config.DEFAULT_ATTACKS
         args.domains = config.PHASE1_DOMAINS
@@ -260,6 +265,13 @@ def main() -> None:
         args.attacks = PHASE2B_ATTACKS
         args.domains = config.PHASE2B_DOMAINS
         args.rubric  = "v2"
+    elif args.phase == "p3":
+        # Only override models when the caller did not pass --models explicitly
+        if args.models == config.DEFAULT_MODELS:
+            args.models = config.PHASE3_MODELS
+        args.attacks = config.PHASE3_ATTACKS    # top-3 Phase I attacks
+        args.domains = config.PHASE1_DOMAINS    # cooking + health
+        args.rubric  = "v2"
 
     config.CHAT_MAX_TOKENS = args.max_tokens
 
@@ -271,12 +283,13 @@ def main() -> None:
         console.print(f"[yellow]Reps:[/yellow]       {args.reps} (rep {args.rep_start + 1}–{args.rep_start + args.reps})")
         console.print(f"[yellow]Max tokens:[/yellow] {args.max_tokens}")
         console.print(f"[yellow]Rubric:[/yellow]     {args.rubric}")
+        console.print(f"[yellow]Phase:[/yellow]      {args.phase or '(manual)'}")
         console.print(f"[yellow]Total:[/yellow]      {total} API calls")
         return
 
     results = run_experiments(args.models, args.attacks, args.domains, args.reps,
                               rep_start=args.rep_start, rubric_version=args.rubric)
-    save_results(results, rubric_version=args.rubric)
+    save_results(results, rubric_version=args.rubric, phase=args.phase)
     print_summary(results)
 
 

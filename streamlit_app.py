@@ -198,9 +198,9 @@ def load_formal_records() -> list[dict]:
 
 @st.cache_data(ttl=30)
 def load_p2b_records() -> list[dict]:
-    """Return full records (payload, response, translation) from results/formal_p2b/."""
+    """Return full records (payload, response, translation) from results/formal_p2a/."""
     rows: list[dict] = []
-    for path in glob.glob("results/formal_p2b/*.json"):
+    for path in glob.glob("results/formal_p2a/*.json"):
         try:
             with open(path) as f:
                 records = json.load(f)
@@ -230,9 +230,9 @@ def load_p2a_records() -> list[dict]:
 
 @st.cache_data(ttl=30)
 def load_p2c_records() -> list[dict]:
-    """Return full records from results/formal_p2c/."""
+    """Return full records from results/formal_p2b/."""
     rows: list[dict] = []
-    for path in glob.glob("results/formal_p2c/*.json"):
+    for path in glob.glob("results/formal_p2b/*.json"):
         try:
             with open(path) as f:
                 records = json.load(f)
@@ -246,7 +246,7 @@ def load_p2c_records() -> list[dict]:
 
 @st.cache_data(ttl=30)
 def load_replay_records() -> list[dict]:
-    """Combined replay loader: Phase I (formal_v2) + Phase IIA (formal_p2b).
+    """Combined replay loader: Phase I (formal_v2) + Phase IIA (formal_p2a).
 
     Each record is normalised to have:
       _language   — "english" for Phase I, or the language_code for Phase IIA
@@ -281,10 +281,10 @@ def load_replay_records() -> list[dict]:
 def load_results() -> pd.DataFrame:
     rows: list[dict] = []
     for path in glob.glob("results/**/*.json", recursive=True):
-        if "formal_p2b" in path:
+        if "formal_p2a" in path:
+            source = "formal_p2a"
+        elif "formal_p2b" in path:
             source = "formal_p2b"
-        elif "formal_p2c" in path:
-            source = "formal_p2c"
         elif "formal_v2" in path:
             source = "formal_v2"
         elif "scratch" in path:
@@ -365,8 +365,8 @@ with st.expander("🗄️ Results Database (SQLite)", expanded=False):
 
 df_all        = load_results()
 df_formal_v2  = df_all[df_all["source"] == "formal_v2"]  if not df_all.empty else df_all
+df_formal_p2a = df_all[df_all["source"] == "formal_p2a"] if not df_all.empty else df_all
 df_formal_p2b = df_all[df_all["source"] == "formal_p2b"] if not df_all.empty else df_all
-df_formal_p2c = df_all[df_all["source"] == "formal_p2c"] if not df_all.empty else df_all
 
 # Shared constants
 P1_ATTACK_IDS  = set(PHASE1_ATTACKS.values())
@@ -689,8 +689,8 @@ with tab_p2:
                     )
             # Phase IIA ASR per (base_attack, language) — (mean, SEM) tuples
             _p2b_asr: dict[tuple, tuple[float, float]] = {}
-            if not df_formal_p2b.empty:
-                _p2bf = df_formal_p2b.copy()
+            if not df_formal_p2a.empty:
+                _p2bf = df_formal_p2a.copy()
                 _p2bf["_base"] = _p2bf["attack_id"].map(_P2B_BASE_LOOKUP)
                 _p2bf_c = _p2bf[~_p2bf["score"].isin(_excl_p2b) & _p2bf["_base"].isin(_TOP3_IDS)]
                 for (_base, _lang), _grp in _p2bf_c.groupby(["_base", "language"]):
@@ -740,7 +740,7 @@ with tab_p2:
 
         with p2b_s2:
             st.markdown("##### Model Vulnerability — Phase IIA")
-            _p2b_model_df = df_formal_p2b[~df_formal_p2b["score"].isin(_excl_p2b)] if not df_formal_p2b.empty else df_formal_p2b
+            _p2b_model_df = df_formal_p2a[~df_formal_p2a["score"].isin(_excl_p2b)] if not df_formal_p2a.empty else df_formal_p2a
             if _p2b_model_df.empty:
                 st.info("No Phase IIA data yet. Run: `python -m src.main --phase p2b`")
             else:
@@ -847,7 +847,7 @@ with tab_p2:
                 _p2b_rp_recs.append({**r, "_language": lc, "_is_p2b": True,
                                       "_payload": r.get("attack_prompt", r.get("payload","")),
                                       "_response": r.get("response_original", r.get("response",""))})
-            st.caption("Browsing results/formal_p2b/ — no API calls.")
+            st.caption("Browsing results/formal_p2a/ — no API calls.")
             _render_replay(_p2b_rp_recs, key_pfx="p2b_rp", show_lang=True)
 
     # ── Phase IIB ──────────────────────────────────────────
@@ -1511,7 +1511,7 @@ with tab_overview:
         _phases_done = sum([
             not df_all[df_all["domain"].isin(["cooking","health"])].empty,
             not df_all[df_all["domain"].isin(["compliant_assistant","truth_teller"])].empty,
-            not df_formal_p2b.empty,
+            not df_formal_p2a.empty,
         ])
     else:
         _ov_models = _ov_avg_asr = _ov_best_asr = 0
@@ -1579,7 +1579,7 @@ with tab_overview:
             _ov_clean  = df_all[~df_all["score"].isin(_excl_scores)] if not df_all.empty else df_all
             _ov_p1_raw = _ov_clean[_ov_clean["domain"].isin(["cooking","health"])]           if not _ov_clean.empty else _ov_clean
             _ov_p2a_raw= _ov_clean[_ov_clean["domain"].isin(["compliant_assistant","truth_teller"])] if not _ov_clean.empty else _ov_clean
-            _ov_p2b_raw= _ov_clean[_ov_clean["source"] == "formal_p2b"]                      if not _ov_clean.empty else _ov_clean
+            _ov_p2b_raw= _ov_clean[_ov_clean["source"] == "formal_p2a"]                      if not _ov_clean.empty else _ov_clean
 
             _ov_p1_st  = _model_asr_sem(_ov_p1_raw)
             _ov_p2a_st = _model_asr_sem(_ov_p2a_raw)
@@ -1622,8 +1622,8 @@ with tab_overview:
             if df_all.empty: return 0
             _s = df_all[df_all["domain"].isin(domain_list)]
             return 0 if _s.empty else min(100, round(_s["model"].nunique() / len(config.ALL_MODELS) * 100))
-        _p2b_pct = 0 if df_formal_p2b.empty else min(
-            100, round(df_formal_p2b["model"].nunique() / len(config.ALL_MODELS) * 100)
+        _p2b_pct = 0 if df_formal_p2a.empty else min(
+            100, round(df_formal_p2a["model"].nunique() / len(config.ALL_MODELS) * 100)
         )
         _progress = [
             _phase_pct(["cooking","health"]),

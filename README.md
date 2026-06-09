@@ -57,6 +57,7 @@ ASRs pooled across Phases I–III (1,005 total trials, Phase IV excluded as fine
 - **Domain is the strongest moderator**: health domain 59.7% ASR vs. cooking 18.4% — driven by system prompt structure (directive vs. disclaimer-based framing)
 - **Multilingual attacks show no systematic advantage** at the overall level, but attack-level interactions exist (Welsh amplifies Role-play/DAN, Mandarin amplifies Naive Injection)
 - **LLM-generated Naive Injection** achieved 100% against Claude (vs. 0% hand-crafted), but the generated payload was structurally a Role-play/DAN attack — the LLM independently converged on identity displacement
+- **Parameter count inversely predicts ASR**: Qwen series comparison (0.8B → 27B) shows smaller models are more vulnerable — lower parameter count correlates with higher ASR, larger models resist injection more effectively
 - **LoRA fine-tuning** reduced Llama 3.1 8B from 79.5% → 0% ASR across all attacks and domains on consumer laptop hardware
 - **Cost ≠ security**: DeepSeek V4 Pro matches Claude Sonnet 4.6 in robustness at a fraction of the API cost
 

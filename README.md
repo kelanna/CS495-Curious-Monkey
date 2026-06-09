@@ -126,5 +126,7 @@ The fine-tuned adapter is stored in `models/llama_ft/` (not tracked in git due t
 - **LM Studio** for local model inference (OpenAI-compatible endpoint)
 - **OpenRouter** for proprietary model access
 - **Unsloth** for LoRA fine-tuning on consumer GPU
+- **SQLite** for persistent result storage (`results/results.db`); synced from JSON logs via `src/db/store.py`
+- **Streamlit** for the results visualization dashboard
 - **Jupyter + pandas + matplotlib/seaborn** for analysis and figures
 - **LaTeX** for the paper

@@ -86,23 +86,50 @@ poster.tex / poster.html    # conference poster
 
 ## Setup
 
+**Prerequisites:** Python 3.13, [LM Studio](https://lmstudio.ai/) (for local models), Git.
+
 ```bash
 git clone <repo-url>
 cd CS495-Curious-Monkey
-make setup          # creates .venv (Python 3.13) and installs dependencies
-cp .env.example .env
-# add OPENROUTER_API_KEY to .env for proprietary models
 ```
 
-Run experiments (requires LM Studio running for local models):
+**Create the virtual environment and install dependencies:**
 
-```bash
-make run            # python src/main.py
-# or directly:
-.venv/bin/python src/harness/run_experiments.py
-```
+| Platform | Command |
+|---|---|
+| Mac / Linux | `make setup` |
+| Windows | `python -m venv .venv && .venv\Scripts\pip install -r requirements.txt` |
 
-Other commands:
+> `make setup` requires `make` to be installed. On Mac it ships with Xcode Command Line Tools (`xcode-select --install`); on Linux via `sudo apt install make`; on Windows via [chocolatey](https://chocolatey.org/) (`choco install make`) or use the manual command above.
+
+**Configure API keys:**
+
+| Platform | Command |
+|---|---|
+| Mac / Linux | `cp .env.example .env` |
+| Windows | `copy .env.example .env` |
+
+Open `.env` and add your `OPENROUTER_API_KEY` (required for DeepSeek, Gemini, GPT-5.5, Claude). Local models (Llama, Qwen) run via LM Studio and need no key.
+
+**Start the results dashboard:**
+
+| Platform | Command |
+|---|---|
+| Mac / Linux | `.venv/bin/streamlit run streamlit_app.py` |
+| Windows | `.venv\Scripts\streamlit run streamlit_app.py` |
+
+Then open `http://localhost:8501` in your browser.
+
+**Run experiments** (requires LM Studio running with the target model loaded):
+
+| Platform | Command |
+|---|---|
+| Mac / Linux | `make run` or `.venv/bin/python -m src.harness.run_experiments` |
+| Windows | `.venv\Scripts\python -m src.harness.run_experiments` |
+
+LM Studio's local API defaults to `http://localhost:1234` — make sure a model is loaded and the server is started before running.
+
+**Other commands (Mac / Linux):**
 
 ```bash
 make test    # pytest tests/
@@ -112,13 +139,19 @@ make clean   # remove .venv and caches
 
 ## Fine-Tuning
 
-Fine-tuning uses [Unsloth](https://github.com/unslothai/unsloth) LoRA on Llama 3.1 8B. Install the fine-tuning dependencies separately:
+Fine-tuning uses [Unsloth](https://github.com/unslothai/unsloth) LoRA on Llama 3.1 8B. **Requires a CUDA-capable GPU** (tested on a consumer laptop GPU).
+
+Install the fine-tuning dependencies separately (not included in the main `requirements.txt` to avoid conflicts on CPU-only machines):
 
 ```bash
-pip install -r requirements-finetune.txt
+# Mac / Linux
+.venv/bin/pip install -r requirements-finetune.txt
+
+# Windows
+.venv\Scripts\pip install -r requirements-finetune.txt
 ```
 
-The fine-tuned adapter is stored in `models/llama_ft/` (not tracked in git due to size; run the fine-tuning script to reproduce it).
+The fine-tuned adapter is stored in `models/llama_ft/` (not tracked in git due to size; run `src/finetuning/train.py` to reproduce it).
 
 ## Tech Stack
 

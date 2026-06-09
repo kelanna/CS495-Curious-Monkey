@@ -1,4 +1,4 @@
-Attack,Phase IIC ASR (%),Phase I Health Baseline (%),n (IIC)
-Roleplay (Llama),0.0 ± 0.0,89.3 ± 6.0,5
-Naive (Llama),100.0 ± 0.0,60.7 ± 9.4,5
-Fake Completion (Llama),0.0 ± 0.0,66.7 ± 8.8,5
+Attack,Phase IIB ASR (%),Phase I Health Baseline (%),n (IIC)
+Roleplay (Llama),0.0 ± 0.0,75.8 ± 7.6,5
+Naive (Llama),100.0 ± 0.0,51.5 ± 8.8,5
+Fake Completion (Llama),0.0 ± 0.0,57.1 ± 8.5,5

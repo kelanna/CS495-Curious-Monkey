@@ -1,3 +1,6 @@
+# Unsloth compiled cache (build artifacts)
+unsloth_compiled_cache/
+
 # Results database
 results/*.db
 

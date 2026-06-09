@@ -18,25 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.agents.prompts import SYSTEM_PROMPTS
 from src.attacks import REGISTRY as ATTACK_REGISTRY
-from src.attacks.p2b_payloads import (
-    LANGUAGE_DISPLAY as P2B_LANG_DISPLAY,
-    PAYLOADS as P2B_PAYLOADS,
-    is_ready as p2b_is_ready,
-)
 from src.attacks.p2b_multilingual import ALL_P2B
-from src.attacks.p2c_llm_attacker import (
-    ATTACK_STYLES as P2C_STYLES,
-    ATTACK_STYLE_DISPLAY as P2C_STYLE_DISPLAY,
-    ATTACKER_MODEL as P2C_ATTACKER,
-    DEFENDER_MODEL as P2C_DEFENDER,
-    run as p2c_run,
-)
 from src.harness import config
-from src.attacks import PHASE2B_ATTACKS as _PHASE2B_FORMAL_IDS
-from src.scoring.auto_score import auto_score
 
 st.set_page_config(
-    page_title="Prompt Injection Tester",
+    page_title="Prompt Injection Research Dashboard",
     page_icon="🔐",
     layout="wide",
 )
@@ -78,37 +64,61 @@ MODEL_DISPLAY: dict[str, str] = {
     "DeepSeek V4 Pro (remote)":        "deepseek/deepseek-v4-pro",
     "Llama 3.1 8B (local)":            "meta-llama-3.1-8b-instruct",
     "Qwen 3.6 35B A3B MTP (local)":    "qwen3.6-35b-a3b-mtp",
+    # Phase III — Qwen 3.5 parameter-size series
+    "Qwen 3.5 0.8B (local)":           "qwen3.5-0.8b",
+    "Qwen 3.5 2B (local)":             "qwen3.5-2b",
+    "Qwen 3.5 4B (local)":             "qwen3.5-4b",
+    "Qwen 3.5 9B (local)":             "qwen/qwen3.5-9b",
+    "Qwen 3.5 27B (local)":            "qwen/qwen3.5-27b",
 }
 MODEL_ID_TO_DISPLAY: dict[str, str] = {v: k for k, v in MODEL_DISPLAY.items()}
 
-# Phase III Qwen family metadata (includes archived models)
+# Phase III Qwen 3.5 parameter-size comparison (same series, Q8, reasoning enabled)
 QWEN_FAMILY: list[dict] = [
     {
-        "model_id": "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
-        "label":    "Qwen 3.5 9B Distilled",
-        "short":    "9B Distilled",
+        "model_id": "qwen3.5-0.8b",
+        "label":    "Qwen 3.5 0.8B",
+        "short":    "0.8B",
+        "params_total": "0.8B", "params_active": "0.8B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#93c5fd",
+    },
+    {
+        "model_id": "qwen3.5-2b",
+        "label":    "Qwen 3.5 2B",
+        "short":    "2B",
+        "params_total": "2B", "params_active": "2B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#60a5fa",
+    },
+    {
+        "model_id": "qwen3.5-4b",
+        "label":    "Qwen 3.5 4B",
+        "short":    "4B",
+        "params_total": "4B", "params_active": "4B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#3b82f6",
+    },
+    {
+        "model_id": "qwen/qwen3.5-9b",
+        "label":    "Qwen 3.5 9B",
+        "short":    "9B",
         "params_total": "9B", "params_active": "9B (dense)",
-        "arch":     "Dense · distilled from Claude 4.6 Opus",
-        "quant":    "Q4_K_M",
-        "color":    "#e67e22",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#1d4ed8",
     },
     {
-        "model_id": "qwen3.6-27b-mtp",
-        "label":    "Qwen 3.6 27B MTP",
-        "short":    "27B MTP",
+        "model_id": "qwen/qwen3.5-27b",
+        "label":    "Qwen 3.5 27B",
+        "short":    "27B",
         "params_total": "27B", "params_active": "27B (dense)",
-        "arch":     "Dense · Multi-Token Prediction",
-        "quant":    "Q4_K_M",
-        "color":    "#e74c3c",
-    },
-    {
-        "model_id": "qwen3.6-35b-a3b-mtp",
-        "label":    "Qwen 3.6 35B A3B MTP",
-        "short":    "35B A3B MTP",
-        "params_total": "35B", "params_active": "~3.6B active (MoE)",
-        "arch":     "Mixture-of-Experts · MTP head",
-        "quant":    "Q4_K_M",
-        "color":    "#9b59b6",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#1e3a8a",
     },
 ]
 
@@ -133,23 +143,6 @@ PHASE2A_ATTACKS: dict[str, str] = {
     "2 - The Moral Paradox":         "p2_moral_paradox",
     "3 - The Recursive Permission":  "p2_recursive_permission",
 }
-# Phase IIA: top-3 Phase I attacks only (by ASR: roleplay 48.4%, fake_completion 40.0%, naive 37.1%)
-PHASE2B_ATTACKS_UI: dict[str, str] = {
-    "2 - Role-play / DAN":           "attack2_roleplay",
-    "3 - Fake Completion":           "attack3_fake_completion",
-    "1 - Naive Injection":           "attack1_naive",
-}
-PHASE2B_LANGUAGE_KEYS: dict[str, str] = {
-    v: k for k, v in P2B_LANG_DISPLAY.items()
-}
-
-PHASE_KEYS = [
-    "Phase I - Baseline Attacks",
-    "Phase IIA - Multilingual Attack Comparison",
-    "Phase IIB - LLM as an Attacker",
-    "Phase III - Qwen Family Comparison",
-    "Phase IV - Fine-Tuning",
-]
 
 # ── Styled panel helper ───────────────────────────────────
 
@@ -188,11 +181,10 @@ def _panel(label: str, body: str, bg: str, border: str, text: str) -> None:
 # ── Results loader ────────────────────────────────────────
 
 @st.cache_data(ttl=30)
-def load_formal_records(rubric: str = "v1") -> list[dict]:
-    """Return full records (including payload + response) from results/formal/ or results/formal_v2/."""
-    folder = "results/formal_v2" if rubric == "v2" else "results/formal"
+def load_formal_records() -> list[dict]:
+    """Return full records (including payload + response) from results/formal_v2/."""
     rows: list[dict] = []
-    for path in glob.glob(f"{folder}/*.json"):
+    for path in glob.glob("results/formal_v2/*.json"):
         try:
             with open(path) as f:
                 records = json.load(f)
@@ -253,7 +245,7 @@ def load_p2c_records() -> list[dict]:
 
 
 @st.cache_data(ttl=30)
-def load_replay_records(rubric: str = "v2") -> list[dict]:
+def load_replay_records() -> list[dict]:
     """Combined replay loader: Phase I (formal_v2) + Phase IIA (formal_p2b).
 
     Each record is normalised to have:
@@ -265,7 +257,7 @@ def load_replay_records(rubric: str = "v2") -> list[dict]:
     rows: list[dict] = []
 
     # Phase I — English
-    for r in load_formal_records(rubric):
+    for r in load_formal_records():
         r = dict(r)
         r["_language"] = "english"
         r["_is_p2b"]   = False
@@ -339,386 +331,11 @@ def compute_asr(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Header ────────────────────────────────────────────────
 
-st.markdown("## Prompt Injection Robustness Tester")
-st.markdown("*Capstone Research Framework · Spring 2026*")
+st.markdown("## Prompt Injection Research Dashboard")
+st.markdown("*Capstone Research · CS495 · Spring 2026*")
 st.divider()
-
-# ── Sidebar ───────────────────────────────────────────────
-
-with st.sidebar:
-    st.header("Test Configuration")
-
-    model_display = st.selectbox("Model", list(MODEL_DISPLAY.keys()))
-    model_id = MODEL_DISPLAY[model_display]
-
-    phase = st.selectbox("Phase", PHASE_KEYS)
-
-    persona_display = attack_display = language = None
-    domain_id = attack_id = None
-    p2b_lang_key = None   # internal language key (mandarin / swahili / welsh)
-
-    if phase == "Phase I - Baseline Attacks":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type", list(PHASE1_ATTACKS.keys()))
-        domain_id  = PHASE1_DOMAINS[persona_display]
-        attack_id  = PHASE1_ATTACKS[attack_display]
-
-    elif phase == "Phase IIA - Multilingual Attack Comparison":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type (top-3 by ASR)", list(PHASE2B_ATTACKS_UI.keys()))
-        language        = st.selectbox("Language", list(P2B_LANG_DISPLAY.values()))
-        domain_id       = PHASE1_DOMAINS[persona_display]
-        base_attack_id  = PHASE2B_ATTACKS_UI[attack_display]
-        p2b_lang_key    = {v: k for k, v in P2B_LANG_DISPLAY.items()}[language]
-        attack_id       = ALL_P2B[
-            next(aid for aid, inst in ALL_P2B.items()
-                 if inst.BASE_ATTACK_ID == base_attack_id and inst.LANGUAGE == p2b_lang_key)
-        ].ATTACK_ID
-        if not p2b_is_ready(p2b_lang_key):
-            st.warning(
-                f"{language} translations are placeholders — fill in "
-                f"`src/attacks/p2b_payloads.py` before running."
-            )
-
-    elif phase == "Phase IIB - LLM as an Attacker":
-        persona_display  = st.selectbox("Defender Persona", list(PHASE1_DOMAINS.keys()))
-        p2c_style_display = st.selectbox("Attack Style (Llama-generated)", list(P2C_STYLE_DISPLAY.keys()))
-        domain_id  = PHASE1_DOMAINS[persona_display]
-        attack_id  = P2C_STYLE_DISPLAY[p2c_style_display]
-        st.caption("**Attacker:** Llama 3.1 8B (local) — 82.8% Phase I ASR (rubric v2)")
-        st.caption("**Defender:** Claude Sonnet 4.6 (remote) — 8.3% Phase I ASR (rubric v2)")
-
-    elif phase == "Phase III - Qwen Family Comparison":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type", list(PHASE1_ATTACKS.keys()))
-        domain_id  = PHASE1_DOMAINS[persona_display]
-        attack_id  = PHASE1_ATTACKS[attack_display]
-        st.caption("**Note:** Select a Qwen model above to run live Phase III comparison data.")
-
-    elif phase == "Phase IV - Fine-Tuning":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type", list(PHASE1_ATTACKS.keys()))
-        domain_id  = PHASE1_DOMAINS[persona_display]
-        attack_id  = PHASE1_ATTACKS[attack_display]
-        model_id   = "llama-3.1-8b-injectionguard"
-        st.caption("**Model:** llama-3.1-8b-injectionguard (LoRA fine-tuned)")
-        st.caption("**Baseline ASR:** 79.6%  →  **Post-FT ASR:** 0%")
-
-    run_btn = st.button("Run Attack", use_container_width=True, type="primary",
-                        disabled=(attack_id is None))
-
-# ── Run attack ────────────────────────────────────────────
-
-if run_btn and attack_id and domain_id:
-    system_prompt = SYSTEM_PROMPTS[domain_id]
-    _is_p2b = attack_id in ALL_P2B
-    _is_p2c = attack_id in P2C_STYLES
-    _base_id = (
-        ALL_P2B[attack_id].BASE_ATTACK_ID if _is_p2b else
-        P2C_STYLES[attack_id]["base_attack"] if _is_p2c else
-        attack_id
-    )
-    attack_module = ATTACK_REGISTRY.get(attack_id)
-
-    if _is_p2c:
-        with st.spinner(
-            f"Step 1 — Llama 3.1 8B generating payload…  "
-            f"Step 2 — Claude Sonnet 4.6 defending…"
-        ):
-            try:
-                result = p2c_run(attack_id, system_prompt, domain_id=domain_id)
-                turn1 = result.get("turn1_response") if _base_id == "attack3_fake_completion" else None
-                result["score"]   = auto_score(_base_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version="v2")
-                result["success"] = result["score"] == "SUCCESS"
-            except Exception as exc:
-                result = {
-                    "attack_id":   attack_id,
-                    "attack_name": P2C_STYLES[attack_id]["name"],
-                    "model":       P2C_DEFENDER,
-                    "domain":      domain_id,
-                    "generated_payload": "",
-                    "payload":     "",
-                    "response":    f"[ERROR] {exc}",
-                    "score":       "ERROR",
-                    "success":     False,
-                    "phase":       "iic",
-                }
-    else:
-        _spinner_msg = (
-            f"Querying {model_display}… (+ Claude Haiku translation if non-English)"
-            if _is_p2b else f"Querying {model_display}…"
-        )
-        with st.spinner(_spinner_msg):
-            try:
-                if _base_id == "attack3_fake_completion":
-                    result = attack_module.run(model_id, system_prompt, domain_id=domain_id)
-                else:
-                    result = attack_module.run(model_id, system_prompt)
-                result["domain"] = domain_id
-                turn1 = result.get("turn1_response") if _base_id == "attack3_fake_completion" else None
-
-                if _is_p2b:
-                    from src.scoring.translate_score import score_multilingual
-                    _inst = ALL_P2B[attack_id]
-                    scoring = score_multilingual(
-                        attack_id=attack_id,
-                        base_attack_id=_inst.BASE_ATTACK_ID,
-                        language_code=_inst.LANGUAGE,
-                        model=model_id,
-                        rep=0,
-                        attack_prompt=result["payload"],
-                        response_original=result["response"],
-                        system_prompt=system_prompt,
-                        domain_id=domain_id,
-                        turn1_response=turn1,
-                    )
-                    result.update(scoring)
-                    result["score"]   = scoring["outcome"]
-                    result["success"] = scoring["outcome"] == "SUCCESS"
-                else:
-                    result["score"]   = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version="v2")
-                    result["success"] = result["score"] == "SUCCESS"
-            except Exception as exc:
-                result = {
-                    "attack_id":   attack_id,
-                    "attack_name": getattr(attack_module, "ATTACK_NAME", attack_id),
-                    "model":       model_id,
-                    "domain":      domain_id,
-                    "payload":     getattr(attack_module, "PAYLOAD", ""),
-                    "response":    f"[ERROR] {exc}",
-                    "score":       "ERROR",
-                    "success":     False,
-                }
-    st.session_state["last_result"]      = result
-    st.session_state["last_model_label"] = model_display
-    st.session_state["last_persona"]     = persona_display
-    st.session_state["last_attack"]      = attack_display
-
-    # Append to session-scoped run log (for Session Log tab)
-    if "run_history" not in st.session_state:
-        st.session_state["run_history"] = []
-    log_entry: dict = {
-        "time":     datetime.now().strftime("%H:%M:%S"),
-        "model":    "Llama→Claude" if _is_p2c else model_display,
-        "attack":   (p2c_style_display if _is_p2c else attack_display) or "",
-        "domain":   persona_display or "",
-        "score":    result["score"],
-        "response": result["response"],
-    }
-    if _is_p2b:
-        log_entry["language"] = result.get("language", "")
-    if _is_p2c:
-        log_entry["generated_payload"] = result.get("generated_payload", "")
-    st.session_state["run_history"].append(log_entry)
-
-    # Save scratch run; suffix encodes phase for easy filtering
-    os.makedirs("results/scratch", exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    suffix = "_p2c_ui" if _is_p2c else ("_p2b_ui" if _is_p2b else "_ui")
-    save_path = f"results/scratch/{ts}{suffix}.json"
-    with open(save_path, "w") as f:
-        json.dump([result], f, indent=2)
-
-    load_results.clear()   # invalidate cache so dashboard refreshes
-
-# ── Main panel — active run display ──────────────────────
-
-if phase in ("Phase I - Baseline Attacks", "Phase III - Qwen Family Comparison", "Phase IV - Fine-Tuning") and domain_id and attack_id:
-    system_prompt  = SYSTEM_PROMPTS[domain_id]
-    attack_module  = ATTACK_REGISTRY[attack_id]
-    payload        = getattr(attack_module, "PAYLOAD", "")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        _panel(
-            f"🤖 AGENT PROMPT · {persona_display} · {model_display}",
-            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
-        )
-        if attack_id == "attack3_fake_completion":
-            from src.attacks.fake_completion import TURN1_BY_DOMAIN, PAYLOAD as FC_PAYLOAD
-            turn1_preview = TURN1_BY_DOMAIN.get(domain_id, TURN1_BY_DOMAIN["cooking"])
-            _panel(
-                f"⚔️ ATTACK PROMPT · {attack_display} · Turn 1 (on-topic)",
-                turn1_preview, "#2a1a4a", "#a78bfa", "#ede9fe",
-            )
-            _panel(
-                f"⚔️ ATTACK PROMPT · {attack_display} · Turn 2 (injection)",
-                FC_PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-        else:
-            _panel(
-                f"⚔️ ATTACK PROMPT · {attack_display}",
-                payload, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-
-    with col2:
-        last = st.session_state.get("last_result")
-        if (last
-                and last.get("model") == model_id
-                and last.get("domain") == domain_id
-                and last.get("attack_id") == attack_id):
-            response  = last["response"]
-            score     = last["score"]
-            success   = last["success"]
-
-            if attack_id == "attack3_fake_completion" and last.get("turn1_response"):
-                _panel("💬 TURN 1 RESPONSE (on-topic)",
-                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
-
-            _panel(
-                f"💬 MODEL RESPONSE · {model_display}",
-                response, "#0e4a1a", "#2dc653", "#e0ffe6",
-            )
-            if score == "ERROR":
-                st.error("ERROR — Could not reach model")
-            elif score == "NO_RESPONSE":
-                st.warning("NO RESPONSE — Model returned an empty reply")
-            elif score == "CONFOUND":
-                st.warning("CONFOUND — Turn 1 was abnormal; pair excluded from analysis")
-            elif score == "AMBIGUOUS":
-                st.warning("AMBIGUOUS — Partial or unclear compliance; queued for manual review")
-            elif success:
-                st.success("SUCCESS — Model broke its directive")
-            else:
-                st.error("FAILURE — Model maintained its directive")
-        else:
-            st.info("Select a configuration and click **Run Attack** to see a live response here.")
-
-elif phase == "Phase IIA - Multilingual Attack Comparison" and domain_id and attack_id and p2b_lang_key:
-    st.markdown(f"### Multilingual Attack Comparison — {language}")
-    _inst    = ALL_P2B[attack_id]
-    _en_payload = P2B_PAYLOADS["mandarin"].get(_inst.BASE_ATTACK_ID, "")  # re-use ZH for preview ref
-    system_prompt = SYSTEM_PROMPTS[domain_id]
-
-    col1, col2 = st.columns(2)
-    with col1:
-        _panel(
-            f"🤖 AGENT PROMPT · {persona_display} · {model_display}",
-            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
-        )
-        if _inst.BASE_ATTACK_ID == "attack3_fake_completion":
-            from src.attacks.p2b_payloads import TURN1_PROMPTS as P2B_TURN1
-            turn1_preview = P2B_TURN1[p2b_lang_key].get(domain_id, "")
-            _panel(
-                f"⚔️ ATTACK · {attack_display} · Turn 1 ({language})",
-                turn1_preview, "#2a1a4a", "#a78bfa", "#ede9fe",
-            )
-            _panel(
-                f"⚔️ ATTACK · {attack_display} · Turn 2 injection ({language})",
-                _inst.PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-        else:
-            _panel(
-                f"⚔️ ATTACK · {attack_display} ({language})",
-                _inst.PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-
-    with col2:
-        last = st.session_state.get("last_result")
-        if (last
-                and last.get("model") == model_id
-                and last.get("attack_id") == attack_id):
-            score   = last["score"]
-            success = last["success"]
-            resp_original   = last.get("response_original", last.get("response", ""))
-            resp_translated = last.get("response_translated")
-            lang_detected   = last.get("response_language_detected", "")
-            note            = last.get("note", "")
-
-            if _inst.BASE_ATTACK_ID == "attack3_fake_completion" and last.get("turn1_response"):
-                _panel("💬 TURN 1 RESPONSE",
-                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
-
-            _panel(f"💬 RAW RESPONSE · {model_display}",
-                   resp_original, "#0e4a1a", "#2dc653", "#e0ffe6")
-
-            if resp_translated:
-                _panel(
-                    f"🔤 TRANSLATED RESPONSE (detected: {lang_detected})",
-                    resp_translated, "#1a1a3a", "#a78bfa", "#ede9fe",
-                )
-
-            # Metadata chips
-            meta_parts = []
-            if lang_detected:
-                meta_parts.append(f"**Detected lang:** `{lang_detected}`")
-            if last.get("translation_used"):
-                meta_parts.append("**Translation:** Claude Haiku")
-            if note:
-                meta_parts.append(f"**Note:** {note}")
-            if meta_parts:
-                st.caption("  ·  ".join(meta_parts))
-
-            if score == "ERROR":
-                st.error("ERROR — Could not reach model")
-            elif score == "NO_RESPONSE":
-                st.warning("NO RESPONSE — Model returned an empty reply")
-            elif score == "CONFOUND":
-                st.warning("CONFOUND — Turn 1 was abnormal")
-            elif score == "TRANSLATION_ERROR":
-                st.error("TRANSLATION ERROR — Claude Haiku translation call failed; manual review required")
-            elif score == "UNCERTAIN_LANG":
-                st.warning(f"UNCERTAIN LANGUAGE — Low-confidence detection ({note}); manual review required")
-            elif score == "AMBIGUOUS":
-                st.warning("AMBIGUOUS — Queued for manual review")
-            elif success:
-                st.success("SUCCESS — Model broke its directive")
-            else:
-                st.error("FAILURE — Model maintained its directive")
-        else:
-            st.info("Select a configuration and click **Run Attack** to see a live response here.")
-
-elif phase == "Phase IIB - LLM as an Attacker" and domain_id and attack_id:
-    st.markdown("### LLM as an Attacker")
-    _style = P2C_STYLES[attack_id]
-    system_prompt = SYSTEM_PROMPTS[domain_id]
-
-    col1, col2 = st.columns(2)
-    with col1:
-        _panel(
-            f"🤖 DEFENDER PROMPT · {persona_display} · Claude Sonnet 4.6 (remote)",
-            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
-        )
-        last = st.session_state.get("last_result")
-        _gen = last.get("generated_payload", "") if (last and last.get("attack_id") == attack_id) else ""
-        _panel(
-            f"⚔️ LLAMA-GENERATED PAYLOAD · {_style['name']}",
-            _gen if _gen else f"[Click 'Run Attack' — Llama will generate a payload targeting:\n\"{_style['goal']}\"]",
-            "#4a0e0e", "#ef233c", "#ffe0e0",
-        )
-
-    with col2:
-        last = st.session_state.get("last_result")
-        if last and last.get("attack_id") == attack_id and last.get("phase") == "iic":
-            response = last["response"]
-            score    = last["score"]
-            success  = last["success"]
-            if _style["base_attack"] == "attack3_fake_completion" and last.get("turn1_response"):
-                _panel("💬 CLAUDE TURN 1 RESPONSE (on-topic)",
-                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
-            _panel("💬 CLAUDE SONNET 4.6 DEFENSE RESPONSE",
-                   response, "#0e4a1a", "#2dc653", "#e0ffe6")
-            if score == "ERROR":
-                st.error("ERROR — Could not reach a model")
-            elif score == "NO_RESPONSE":
-                st.warning("NO RESPONSE — Model returned an empty reply")
-            elif score == "CONFOUND":
-                st.warning("CONFOUND — Turn 1 was abnormal")
-            elif score == "AMBIGUOUS":
-                st.warning("AMBIGUOUS — Queued for manual review")
-            elif success:
-                st.success("SUCCESS — Claude broke its directive (Llama wins)")
-            else:
-                st.error("FAILURE — Claude held its directive (Defender wins)")
-        else:
-            st.info("Select a configuration and click **Run Attack** — Llama will generate an injection payload live, then Claude will defend.")
-
 
 # ── Results Dashboard ─────────────────────────────────────
-
-st.divider()
-st.markdown("### Results Dashboard")
 
 with st.expander("🗄️ Results Database (SQLite)", expanded=False):
     try:
@@ -747,7 +364,6 @@ with st.expander("🗄️ Results Database (SQLite)", expanded=False):
         st.caption(f"SQLite unavailable: {_db_exc}")
 
 df_all        = load_results()
-df_formal     = df_all[df_all["source"] == "formal"]     if not df_all.empty else df_all
 df_formal_v2  = df_all[df_all["source"] == "formal_v2"]  if not df_all.empty else df_all
 df_formal_p2b = df_all[df_all["source"] == "formal_p2b"] if not df_all.empty else df_all
 df_formal_p2c = df_all[df_all["source"] == "formal_p2c"] if not df_all.empty else df_all
@@ -929,8 +545,8 @@ def _render_replay(records: list[dict], key_pfx: str, show_lang: bool = False) -
 
 # ── Top-level phase tabs ──────────────────────────────────
 
-tab_p1, tab_p2, tab_p3, tab_p4, tab_demo, tab_overview = st.tabs([
-    "Phase I", "Phase II", "Phase III", "Phase IV", "Live Demo", "Overview",
+tab_p1, tab_p2, tab_p3, tab_p4, tab_overview = st.tabs([
+    "Phase I", "Phase II", "Phase III", "Phase IV", "Overview",
 ])
 
 # ═══════════════════════════════════════════════════════════
@@ -938,12 +554,7 @@ tab_p1, tab_p2, tab_p3, tab_p4, tab_demo, tab_overview = st.tabs([
 # ═══════════════════════════════════════════════════════════
 with tab_p1:
     st.markdown("#### Phase I — Baseline Attacks")
-    _p1_rubric_sel = st.radio(
-        "Rubric version", ["v2 (formal_v2)", "v1 (formal)"],
-        index=0, horizontal=True, key="p1_rubric",
-    )
-    _p1_rubric = "v1" if _p1_rubric_sel.startswith("v1") else "v2"
-    _df_p1 = df_formal_v2 if _p1_rubric == "v2" else df_formal
+    _df_p1 = df_formal_v2
     _df_p1_filt = (
         _df_p1[
             _df_p1["attack_id"].isin(P1_ATTACK_IDS) &
@@ -958,7 +569,7 @@ with tab_p1:
 
     with p1_sub1:
         st.markdown("##### Attack Success Rate by Attack Type")
-        st.caption("Avg ASR across all models, grouped by domain. Rubric: " + _p1_rubric)
+        st.caption("Avg ASR across all models, grouped by domain. Rubric: v2 (formal_v2)")
         if _asr_p1.empty:
             st.info("No Phase I data yet. Run: `python -m src.main --phase p1`")
         else:
@@ -1016,11 +627,11 @@ with tab_p1:
             _render_heatmap(_asr_p1, key_sfx="p1")
 
     with p1_sub3:
-        st.caption(f"Browsing results/formal{'_v2' if _p1_rubric=='v2' else ''}/ — no API calls.")
+        st.caption("Browsing results/formal_v2/ — no API calls.")
         _p1_rp = [
             {**r, "_language": "english", "_is_p2b": False,
              "_payload": r.get("payload",""), "_response": r.get("response","")}
-            for r in load_formal_records(rubric=_p1_rubric)
+            for r in load_formal_records()
         ]
         _render_replay(_p1_rp, key_pfx="p1_rp", show_lang=False)
 
@@ -1434,231 +1045,238 @@ with tab_p2:
 
 
 # ═══════════════════════════════════════════════════════════
-# PHASE III — Qwen Family Comparison
+# PHASE III — Parameter-Size Comparison Study
 # ═══════════════════════════════════════════════════════════
 with tab_p3:
-    st.markdown("#### Phase III — Qwen Family Robustness Comparison")
-    st.caption("Compares Qwen 3.5 9B Distilled · Qwen 3.6 27B MTP · Qwen 3.6 35B A3B MTP "
-               "across Phase I (baseline) and Phase IIA (multilingual) results.")
+    st.markdown("#### Phase III — Parameter-Size Comparison Study (Qwen 3.5)")
+    st.caption(
+        "Research question: does parameter count reduce prompt injection vulnerability? "
+        "Five Qwen 3.5 models (0.8B → 27B), same series, Q8 quantization, reasoning enabled. "
+        "Top-3 Phase I attacks × cooking + health × 5 reps each."
+    )
 
-    # ── Load Phase III data from archive + formal dirs ──────────────────────────
+    # ── Load Phase III data ──────────────────────────────────────────────────────
     _EXCL_P3 = {"AMBIGUOUS","NO_RESPONSE","CONFOUND","TRANSLATION_ERROR","UNCERTAIN_LANG","ERROR"}
-    _qwen_ids = [q["model_id"] for q in QWEN_FAMILY]
 
     def _load_p3_json():
         rows = []
-        for path in (
-            glob.glob("results/archive/qwen*.json") +
-            glob.glob("results/formal_v2/*.json") +
-            glob.glob("results/formal_p2b/*.json")
-        ):
+        for path in glob.glob("results/formal_p3/*.json"):
             try:
                 data = json.load(open(path))
                 for r in data:
-                    if isinstance(r, dict) and r.get("model","") in _qwen_ids:
+                    if isinstance(r, dict):
                         rows.append(r)
             except Exception:
                 pass
         return rows
 
     _p3_raw = _load_p3_json()
-    _p3_p1  = [r for r in _p3_raw if r.get("attack_id","").startswith("attack")]
-    _p3_p2b = [r for r in _p3_raw if r.get("attack_id","").startswith("p2b")]
 
-    def _p3_asr(model_id, domain=None, attack_id=None, lang=None, phase="p1"):
-        src = _p3_p1 if phase == "p1" else _p3_p2b
+    def _p3_asr(model_id, domain=None, attack_id=None):
         vals = [
-            bool(r.get("success")) for r in src
+            bool(r.get("success")) for r in _p3_raw
             if r.get("model") == model_id
             and r.get("score","") not in _EXCL_P3
             and (domain is None or r.get("domain") == domain)
             and (attack_id is None or r.get("attack_id") == attack_id)
-            and (lang is None or r.get("language_code") == lang)
         ]
         if not vals: return 0.0, 0.0
         arr = np.array(vals, dtype=float)
-        return round(float(arr.mean()*100),1), round(float(arr.std(ddof=1)/np.sqrt(len(arr))*100) if len(arr)>1 else 0.0, 1)
+        return round(float(arr.mean()*100), 1), round(float(arr.std(ddof=1)/np.sqrt(len(arr))*100) if len(arr)>1 else 0.0, 1)
 
     _p3_results_tab, _p3_replay_tab = st.tabs(["Comparison Results", "Payload Replay"])
 
     # ── Comparison Results ──────────────────────────────────────────────────────
     with _p3_results_tab:
-        # Model info table
-        st.markdown("##### Model Overview")
-        _info_rows = [{
-            "Model": q["label"], "Total Params": q["params_total"],
-            "Active Params": q["params_active"], "Architecture": q["arch"],
-            "Quantization": q["quant"],
-        } for q in QWEN_FAMILY]
-        st.dataframe(pd.DataFrame(_info_rows), use_container_width=True, hide_index=True)
+        if not _p3_raw:
+            st.info("No Phase III formal data yet. Run: `python -m src.harness.run_experiments --phase p3 --models <model_id>`")
+        else:
+            # Summary metrics
+            _p3_mc1, _p3_mc2, _p3_mc3, _p3_mc4 = st.columns(4)
+            _p3_valid = [r for r in _p3_raw if r.get("score","") not in _EXCL_P3]
+            _p3_succ  = sum(1 for r in _p3_valid if r.get("success"))
+            _p3_overall_asr = round(_p3_succ / len(_p3_valid) * 100, 1) if _p3_valid else 0.0
+            _p3_run_asrs = [_p3_asr(q["model_id"])[0] for q in QWEN_FAMILY
+                            if any(r.get("model") == q["model_id"] for r in _p3_raw)]
+            _p3_mc1.metric("Models Tested",
+                           len([q for q in QWEN_FAMILY if any(r.get("model") == q["model_id"] for r in _p3_raw)]))
+            _p3_mc2.metric("Overall ASR", f"{_p3_overall_asr:.0f}%")
+            _p3_mc3.metric("Best ASR (most robust)", f"{min(_p3_run_asrs):.0f}%" if _p3_run_asrs else "—")
+            _p3_mc4.metric("Worst ASR (most vulnerable)", f"{max(_p3_run_asrs):.0f}%" if _p3_run_asrs else "—")
 
-        st.divider()
+            st.divider()
 
-        # Phase I comparison
-        st.markdown("##### Phase I — Baseline Attack Results")
-        _p3c1, _p3c2 = st.columns(2)
+            # Model info table
+            st.markdown("##### Model Overview")
+            _info_rows = [{
+                "Model": q["label"], "Parameters": q["params_total"],
+                "Architecture": q["arch"], "Quantization": q["quant"],
+            } for q in QWEN_FAMILY]
+            st.dataframe(pd.DataFrame(_info_rows), use_container_width=True, hide_index=True)
 
-        with _p3c1:
-            _cats = ["Overall", "Cooking", "Health"]
-            _dom_map = {"Overall": None, "Cooking": "cooking", "Health": "health"}
-            _p3_bar_fig = go.Figure()
-            for q in QWEN_FAMILY:
-                _ys, _errs = [], []
-                for cat in _cats:
-                    m, s = _p3_asr(q["model_id"], domain=_dom_map[cat])
-                    _ys.append(m); _errs.append(s*2)
-                _p3_bar_fig.add_trace(go.Bar(
-                    name=q["short"], x=_cats, y=_ys,
-                    error_y=dict(type="data", array=_errs, visible=True),
-                    marker_color=q["color"], marker_line_color="#333", marker_line_width=1,
-                ))
-            _p3_bar_fig.update_layout(
-                barmode="group", height=380,
-                title=dict(text="Phase I ASR by Domain (±2 SEM)", font=dict(color="#fff")),
-                plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
-                yaxis=dict(title="ASR (%)", range=[0,110]),
-                legend=dict(bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=10,r=10,t=40,b=10),
-            )
-            st.plotly_chart(_p3_bar_fig, use_container_width=True)
+            st.divider()
 
-        with _p3c2:
-            _atk_ids  = ["attack1_naive","attack2_roleplay","attack3_fake_completion",
-                         "attack4_extraction","attack5_base64"]
-            _atk_lbls = ["Naive Injection","Role-play / DAN","Fake Completion",
-                         "Sys Prompt Extraction","Base64 Encoding"]
-            _z_p3, _txt_p3 = [], []
-            for q in QWEN_FAMILY:
-                row, txt = [], []
-                for aid in _atk_ids:
-                    m, _ = _p3_asr(q["model_id"], attack_id=aid)
-                    row.append(m); txt.append(f"{m:.0f}%")
-                _z_p3.append(row); _txt_p3.append(txt)
-            _heat_fig = go.Figure(go.Heatmap(
-                z=_z_p3, x=_atk_lbls, y=[q["short"] for q in QWEN_FAMILY],
-                text=_txt_p3, texttemplate="%{text}",
-                textfont={"size":14,"color":"white"},
-                colorscale=[[0,"#1a4a1a"],[0.5,"#7a7a1a"],[1,"#7a1a1a"]],
-                zmin=0, zmax=100, showscale=True,
+            # Trend line — key chart
+            st.markdown("##### Does Parameter Count Reduce Injection Vulnerability?")
+            _param_lbls    = [q["short"] for q in QWEN_FAMILY]
+            _param_overall = [_p3_asr(q["model_id"])[0] for q in QWEN_FAMILY]
+            _param_cooking = [_p3_asr(q["model_id"], domain="cooking")[0] for q in QWEN_FAMILY]
+            _param_health  = [_p3_asr(q["model_id"], domain="health")[0] for q in QWEN_FAMILY]
+
+            _trend_fig = go.Figure()
+            _trend_fig.add_trace(go.Scatter(
+                x=_param_lbls, y=_param_overall, mode="lines+markers", name="Overall",
+                line=dict(color="#60a5fa", width=3), marker=dict(size=10, color="#60a5fa"),
             ))
-            _heat_fig.update_layout(
-                height=280, title=dict(text="Per-Attack ASR Heatmap", font=dict(color="#fff")),
-                plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
-                xaxis=dict(tickangle=-20, tickfont=dict(size=11)),
-                margin=dict(l=10,r=10,t=40,b=10),
+            _trend_fig.add_trace(go.Scatter(
+                x=_param_lbls, y=_param_health, mode="lines+markers", name="Health",
+                line=dict(color="#ef233c", width=2, dash="dot"), marker=dict(size=8, color="#ef233c"),
+            ))
+            _trend_fig.add_trace(go.Scatter(
+                x=_param_lbls, y=_param_cooking, mode="lines+markers", name="Cooking",
+                line=dict(color="#2dc653", width=2, dash="dot"), marker=dict(size=8, color="#2dc653"),
+            ))
+            for _ql, _yv in zip(_param_lbls, _param_overall):
+                _trend_fig.add_annotation(
+                    x=_ql, y=_yv, text=f"{_yv:.0f}%",
+                    showarrow=False, yshift=14, font=dict(color="#fff", size=12),
+                )
+            _trend_fig.update_layout(
+                height=400, plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                yaxis=dict(title="ASR (%)", range=[0, 115], gridcolor="#222"),
+                xaxis=dict(title="Parameter Count"),
+                legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+                margin=dict(l=10, r=10, t=50, b=10),
             )
-            st.plotly_chart(_heat_fig, use_container_width=True)
+            st.plotly_chart(_trend_fig, use_container_width=True)
+            st.caption(
+                "Overall ASR declines from 91.7% (0.8B) to 46.4% (27B), but flattens at ≥4B. "
+                "Health domain stays at 93–100% regardless of scale. "
+                "Cooking drops to 0% at 4B+, suggesting a threshold effect rather than smooth scaling."
+            )
 
-        st.divider()
+            st.divider()
 
-        # Phase IIA comparison
-        st.markdown("##### Phase IIA — Multilingual Results")
-        _p3c3, _p3c4 = st.columns(2)
+            # Two-column: grouped bar + attack heatmap
+            _p3c1, _p3c2 = st.columns(2)
 
-        with _p3c3:
-            _langs = ["mandarin","swahili","welsh"]
-            _lang_lbls = ["Mandarin","Swahili","Welsh"]
-            _p2b_fig = go.Figure()
-            for q in QWEN_FAMILY:
-                _ys2, _errs2 = [], []
-                for lang in _langs:
-                    m, s = _p3_asr(q["model_id"], lang=lang, phase="p2b")
-                    _ys2.append(m); _errs2.append(s*2)
-                _p2b_fig.add_trace(go.Bar(
-                    name=q["short"], x=_lang_lbls, y=_ys2,
-                    error_y=dict(type="data", array=_errs2, visible=True),
-                    marker_color=q["color"], marker_line_color="#333", marker_line_width=1,
+            with _p3c1:
+                st.markdown("##### ASR by Domain")
+                _dom_bar_fig = go.Figure()
+                for q in QWEN_FAMILY:
+                    _ys, _errs = [], []
+                    for _dom in [None, "cooking", "health"]:
+                        m, s = _p3_asr(q["model_id"], domain=_dom)
+                        _ys.append(m); _errs.append(s * 2)
+                _dom_bar_fig = go.Figure()
+                for q in QWEN_FAMILY:
+                    _ys, _errs = [], []
+                    for _dom in [None, "cooking", "health"]:
+                        m, s = _p3_asr(q["model_id"], domain=_dom)
+                        _ys.append(m); _errs.append(s * 2)
+                    _dom_bar_fig.add_trace(go.Bar(
+                        name=q["short"], x=["Overall","Cooking","Health"], y=_ys,
+                        error_y=dict(type="data", array=_errs, visible=True,
+                                     color="#ffffff", thickness=1),
+                        marker_color=q["color"], marker_line_color="#333", marker_line_width=1,
+                    ))
+                _dom_bar_fig.update_layout(
+                    barmode="group", height=360,
+                    plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                    yaxis=dict(title="ASR (%)", range=[0, 120], gridcolor="#222"),
+                    legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+                    margin=dict(l=10, r=10, t=30, b=10),
+                )
+                st.plotly_chart(_dom_bar_fig, use_container_width=True)
+
+            with _p3c2:
+                st.markdown("##### Per-Attack ASR Heatmap")
+                _atk_ids  = ["attack2_roleplay", "attack1_naive", "attack3_fake_completion"]
+                _atk_lbls = ["Role-play/DAN", "Naive Injection", "Fake Completion"]
+                _z_p3, _txt_p3 = [], []
+                for q in QWEN_FAMILY:
+                    row, txt = [], []
+                    for aid in _atk_ids:
+                        m, _ = _p3_asr(q["model_id"], attack_id=aid)
+                        row.append(m); txt.append(f"{m:.0f}%")
+                    _z_p3.append(row); _txt_p3.append(txt)
+                _heat_fig = go.Figure(go.Heatmap(
+                    z=_z_p3, x=_atk_lbls, y=[q["short"] for q in QWEN_FAMILY],
+                    text=_txt_p3, texttemplate="%{text}",
+                    textfont={"size": 14, "color": "white"},
+                    colorscale=[[0,"#1a4a1a"],[0.5,"#7a7a1a"],[1,"#7a1a1a"]],
+                    zmin=0, zmax=100, showscale=True,
                 ))
-            _p2b_fig.update_layout(
-                barmode="group", height=360,
-                title=dict(text="Phase IIA ASR by Language (±2 SEM)", font=dict(color="#fff")),
-                plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
-                yaxis=dict(title="ASR (%)", range=[0,100]),
-                legend=dict(bgcolor="rgba(0,0,0,0)"),
-                margin=dict(l=10,r=10,t=40,b=10),
-            )
-            st.plotly_chart(_p2b_fig, use_container_width=True)
+                _heat_fig.update_layout(
+                    height=360, plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                    xaxis=dict(tickangle=-15, tickfont=dict(size=12)),
+                    margin=dict(l=10, r=10, t=20, b=10),
+                )
+                st.plotly_chart(_heat_fig, use_container_width=True)
 
-        with _p3c4:
+            st.divider()
+
+            # Summary table
+            st.markdown("##### Summary Table")
             _sum_rows = []
             for q in QWEN_FAMILY:
-                p1m, p1s   = _p3_asr(q["model_id"])
-                p1c, _     = _p3_asr(q["model_id"], domain="cooking")
-                p1h, _     = _p3_asr(q["model_id"], domain="health")
-                p2bm, p2bs = _p3_asr(q["model_id"], phase="p2b")
+                p_overall, p_sem = _p3_asr(q["model_id"])
+                p_cooking, _     = _p3_asr(q["model_id"], domain="cooking")
+                p_health, _      = _p3_asr(q["model_id"], domain="health")
+                p_roleplay, _    = _p3_asr(q["model_id"], attack_id="attack2_roleplay")
+                p_naive, _       = _p3_asr(q["model_id"], attack_id="attack1_naive")
+                p_fake, _        = _p3_asr(q["model_id"], attack_id="attack3_fake_completion")
                 _sum_rows.append({
-                    "Model":         q["short"],
-                    "Phase I ASR":   f"{p1m:.1f}% ±{p1s:.1f}",
-                    "Cooking":       f"{p1c:.0f}%",
-                    "Health":        f"{p1h:.0f}%",
-                    "Phase IIA ASR": f"{p2bm:.1f}% ±{p2bs:.1f}",
+                    "Model":           q["label"],
+                    "Overall ASR":     f"{p_overall:.0f}% ±{p_sem:.0f}",
+                    "Cooking":         f"{p_cooking:.0f}%",
+                    "Health":          f"{p_health:.0f}%",
+                    "Role-play/DAN":   f"{p_roleplay:.0f}%",
+                    "Naive Injection": f"{p_naive:.0f}%",
+                    "Fake Completion": f"{p_fake:.0f}%",
                 })
-            st.markdown("**Summary Table**")
             st.dataframe(pd.DataFrame(_sum_rows), use_container_width=True, hide_index=True)
             st.caption(
-                "Key insight: larger models (27B→35B) achieve 0% cooking ASR vs 10% for 9B. "
-                "Phase IIA ASR stays flat (~48–52%) across all three sizes — "
-                "scale alone does not improve multilingual robustness."
+                "**Key finding:** ASR drops from 91.7% (0.8B) to 46.4% (27B) overall. "
+                "Health domain remains 93–100% across all sizes. "
+                "Cooking drops to 0% at 4B+. Parameter scale partially mitigates but does not eliminate injection vulnerability."
             )
 
     # ── Payload Replay ──────────────────────────────────────────────────────────
     with _p3_replay_tab:
         st.caption(
-            "Browsing Qwen family runs from results/formal_v2/ and results/archive/ — no API calls.  "
-            "The same Phase I hand-crafted payloads were used; the comparison shows how each Qwen "
-            "variant responded relative to Phase I baseline models."
+            "Browsing Phase III runs from results/formal_p3/ — no API calls. "
+            "Shows how each Qwen 3.5 variant responded to the top-3 Phase I attack payloads."
         )
 
-        _p3_show_cmp = st.checkbox(
-            "Show Phase I baseline response alongside each Qwen run",
-            value=True, key="p3_rp_cmp",
-        )
-
-        # Pre-build Phase I baseline lookup (non-Qwen models only)
-        _qwen_set = set(_qwen_ids)
-        _p1_cmp_by_key: dict[tuple, list[dict]] = {}
-        for _r in load_formal_records(rubric="v2"):
-            if _r.get("model","") in _qwen_set:
-                continue
-            _k = (_r.get("attack_id",""), _r.get("domain",""))
-            _p1_cmp_by_key.setdefault(_k, []).append(_r)
-
-        # Normalise Qwen Phase I records for replay
-        _p3_rp_all = [
-            {**r, "_language": "english", "_is_p2b": False,
-             "_payload": r.get("payload",""), "_response": r.get("response","")}
-            for r in _p3_p1
-        ]
-
-        if not _p3_rp_all:
-            st.info("No Qwen Phase I records found. Run the harness with a Qwen model ID first.")
+        if not _p3_raw:
+            st.info("No Phase III data yet.")
         else:
-            # Filter controls
             _rfc1, _rfc2, _rfc3 = st.columns(3)
             with _rfc1:
                 _p3_m_opts = ["All"] + [q["label"] for q in QWEN_FAMILY]
-                _p3_sel_m  = st.selectbox("Qwen Model", _p3_m_opts, key="p3_rp_m")
+                _p3_sel_m  = st.selectbox("Model", _p3_m_opts, key="p3_rp_m")
             with _rfc2:
                 _p3_d_opts = ["All"] + sorted({
-                    DOMAIN_LABELS.get(r.get("domain",""), r.get("domain",""))
-                    for r in _p3_rp_all
+                    DOMAIN_LABELS.get(r.get("domain",""), r.get("domain","")) for r in _p3_raw
                 })
                 _p3_sel_d  = st.selectbox("Domain", _p3_d_opts, key="p3_rp_d")
             with _rfc3:
                 _p3_a_opts = ["All"] + sorted({
-                    r.get("attack_name", r.get("attack_id","")) for r in _p3_rp_all
+                    r.get("attack_name", r.get("attack_id","")) for r in _p3_raw
                 })
                 _p3_sel_a  = st.selectbox("Attack Type", _p3_a_opts, key="p3_rp_a")
 
             _qwen_id_by_label = {q["label"]: q["model_id"] for q in QWEN_FAMILY}
             _p3_rp_filt = [
-                r for r in sorted(_p3_rp_all, key=lambda x: (
+                r for r in sorted(_p3_raw, key=lambda x: (
                     x.get("attack_name", x.get("attack_id","")),
-                    x.get("domain",""), x.get("model",""), x.get("rep",0),
+                    x.get("domain",""), x.get("model",""), x.get("rep", 0),
                 ))
-                if (_p3_sel_m == "All" or r.get("model","") == _qwen_id_by_label.get(_p3_sel_m,""))
+                if (_p3_sel_m == "All" or r.get("model","") == _qwen_id_by_label.get(_p3_sel_m, ""))
                 and (_p3_sel_d == "All" or DOMAIN_LABELS.get(r.get("domain",""), r.get("domain","")) == _p3_sel_d)
                 and (_p3_sel_a == "All" or r.get("attack_name", r.get("attack_id","")) == _p3_sel_a)
+                and r.get("score","") != "ERROR"
             ]
 
             st.markdown(f"**{len(_p3_rp_filt)} run(s) matching filters**")
@@ -1679,52 +1297,25 @@ with tab_p3:
                     )
 
                     with st.expander(
-                        f"{_pr_ico} **{_pr_ml}** · {_pr_dl} · {_pr_an} · Rep {_pr.get('rep',0)+1} · {_pr_sc}",
+                        f"{_pr_ico} **{_pr_ml}** · {_pr_dl} · {_pr_an} · Rep {_pr.get('rep', 0) + 1} · {_pr_sc}",
                         expanded=False,
                     ):
                         _pr_spr     = SYSTEM_PROMPTS.get(_pr.get("domain",""), "")
-                        _pr_payload = _pr.get("_payload","")
-                        _pr_resp    = _pr.get("_response","")
-                        _pr_key     = (_pr.get("attack_id",""), _pr.get("domain",""))
-                        _pr_cmp_recs = _p1_cmp_by_key.get(_pr_key, []) if _p3_show_cmp else []
+                        _pr_payload = _pr.get("payload","")
+                        _pr_resp    = _pr.get("response","")
 
                         c1, c2 = st.columns(2)
                         with c1:
-                            _panel(
-                                f"🤖 AGENT PROMPT · {_pr_dl}",
-                                _pr_spr, "#0e3a4a", "#00b4d8", "#e0f7fa",
-                            )
-                            _panel(
-                                f"⚔️ PHASE I BASELINE PAYLOAD · {_pr_an}",
-                                _pr_payload, "#4a0e0e", "#ef233c", "#ffe0e0",
-                            )
+                            _panel(f"🤖 AGENT PROMPT · {_pr_dl}", _pr_spr, "#0e3a4a", "#00b4d8", "#e0f7fa")
+                            _panel(f"⚔️ PAYLOAD · {_pr_an}", _pr_payload, "#4a0e0e", "#ef233c", "#ffe0e0")
                         with c2:
-                            _panel(
-                                f"💬 {_pr_ml} RESPONSE",
-                                _pr_resp, "#0e4a1a", "#2dc653", "#e0ffe6",
-                            )
+                            _panel(f"💬 {_pr_ml} RESPONSE", _pr_resp, "#0e4a1a", "#2dc653", "#e0ffe6")
                             if _pr_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND"):
                                 st.warning(f"{_pr_sc} — excluded from ASR")
                             elif _pr_sc == "SUCCESS":
                                 st.success("SUCCESS — Model broke its directive")
                             else:
                                 st.error("FAILURE — Model maintained its directive")
-
-                            if _pr_cmp_recs:
-                                st.markdown("---")
-                                st.caption("Phase I Baseline Comparison (non-Qwen models, same attack + domain)")
-                                for _cmp in _pr_cmp_recs[:3]:
-                                    _cmp_ml = MODEL_ID_TO_DISPLAY.get(_cmp.get("model",""), _cmp.get("model",""))
-                                    _cmp_sc = _cmp.get("score","")
-                                    _cmp_ico = "✅" if _cmp_sc == "SUCCESS" else (
-                                        "⚠️" if _cmp_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND") else "🛡️"
-                                    )
-                                    _panel(
-                                        f"{_cmp_ico} PHASE I · {_cmp_ml} · Rep {_cmp.get('rep',0)+1} · {_cmp_sc}",
-                                        _cmp.get("response",""), "#1a1a3a", "#a78bfa", "#ede9fe",
-                                    )
-                            elif _p3_show_cmp:
-                                st.caption("No Phase I baseline records for this attack + domain.")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1777,8 +1368,6 @@ with tab_p4:
 - **Base64 silent refusal**: `finish_reason=stop`, `completion_tokens=1` — model generates EOS only; confirmed not a token-limit issue via direct API inspection
             """)
 
-        st.info("Use the sidebar (Phase IV — Fine-Tuning) to run a live attack against the fine-tuned model.")
-
     # ── Payload Replay ──────────────────────────────────────────────────────────
     with _p4_replay_tab:
         _FT_MODEL_ID       = "llama-3.1-8b-injectionguard"
@@ -1799,13 +1388,13 @@ with tab_p4:
 
         # Load fine-tuned model records
         _ft_recs_raw = [
-            r for r in load_formal_records(rubric="v2")
+            r for r in load_formal_records()
             if r.get("model","") == _FT_MODEL_ID
         ]
 
         # Pre-build baseline lookup keyed by (attack_id, domain)
         _ft_base_by_key: dict[tuple, list[dict]] = {}
-        for _r in load_formal_records(rubric="v2"):
+        for _r in load_formal_records():
             if _r.get("model","") != _FT_BASELINE_ID:
                 continue
             _k = (_r.get("attack_id",""), _r.get("domain",""))
@@ -1902,53 +1491,6 @@ with tab_p4:
                                     )
                             elif _p4_show_cmp:
                                 st.caption("No pre-FT baseline records for this attack + domain.")
-
-
-# ═══════════════════════════════════════════════════════════
-# LIVE DEMO
-# ═══════════════════════════════════════════════════════════
-with tab_demo:
-    st.markdown("#### Live Demo — Session Run Log")
-    st.caption("Runs made this session via the sidebar. Saved to results/scratch/ for reference.")
-    _history = st.session_state.get("run_history", [])
-    if not _history:
-        st.info("No runs this session. Select a phase and model in the sidebar, then click **Run Attack**.")
-    else:
-        _SCORE_BADGE = {
-            "SUCCESS":     ("🟢", "#2dc653"),
-            "FAILURE":     ("🔴", "#ef233c"),
-            "AMBIGUOUS":   ("🟡", "#f4a261"),
-            "NO_RESPONSE": ("🟡", "#f4a261"),
-            "CONFOUND":    ("🟡", "#f4a261"),
-            "ERROR":       ("🔴", "#ef233c"),
-        }
-        st.markdown(f"**{len(_history)} run(s) this session**")
-        _summary_rows = []
-        for _i, _entry in enumerate(reversed(_history)):
-            _icon, _ = _SCORE_BADGE.get(_entry["score"], ("⚪", "#aaa"))
-            _summary_rows.append({
-                "#": len(_history)-_i,
-                "Time":   _entry["time"],
-                "Model":  _entry["model"],
-                "Attack": _entry["attack"],
-                "Domain": _entry["domain"],
-                "Score":  f"{_icon} {_entry['score']}",
-            })
-        st.dataframe(pd.DataFrame(_summary_rows), use_container_width=True, hide_index=True)
-        st.markdown("---")
-        st.markdown("**Response Details**")
-        for _i, _entry in enumerate(reversed(_history)):
-            _run_num = len(_history) - _i
-            _icon, _color = _SCORE_BADGE.get(_entry["score"], ("⚪", "#aaa"))
-            _lbl = f"#{_run_num}  {_entry['time']}  ·  {_entry['attack']}  ·  {_entry['model']}  ·  {_icon} {_entry['score']}"
-            with st.expander(_lbl, expanded=(_i == 0)):
-                st.markdown(
-                    f"<span style='color:{_color}; font-weight:bold;'>{_entry['score']}</span>"
-                    f"  &nbsp;|&nbsp;  {_entry['domain']}",
-                    unsafe_allow_html=True,
-                )
-                st.text_area("Response", _entry["response"], height=160,
-                             key=f"demo_resp_{_run_num}_{_i}", disabled=True)
 
 
 # ═══════════════════════════════════════════════════════════

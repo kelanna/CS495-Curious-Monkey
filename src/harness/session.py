@@ -16,7 +16,8 @@ def _client(model_id: str) -> OpenAI:
         )
     if model_id in config.REMOTE_MODELS:
         return OpenAI(base_url=config.OPENROUTER_BASE_URL, api_key=os.getenv("OPENROUTER_API_KEY", ""))
-    return OpenAI(base_url=config.LOCAL_BASE_URL, api_key=config.LOCAL_API_KEY)
+    base_url = config.LOCAL_MODEL_BASE_URLS.get(model_id, config.LOCAL_BASE_URL)
+    return OpenAI(base_url=base_url, api_key=config.LOCAL_API_KEY)
 
 
 def _max_tokens(model_id: str) -> int:

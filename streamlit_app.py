@@ -18,25 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.agents.prompts import SYSTEM_PROMPTS
 from src.attacks import REGISTRY as ATTACK_REGISTRY
-from src.attacks.p2b_payloads import (
-    LANGUAGE_DISPLAY as P2B_LANG_DISPLAY,
-    PAYLOADS as P2B_PAYLOADS,
-    is_ready as p2b_is_ready,
-)
 from src.attacks.p2b_multilingual import ALL_P2B
-from src.attacks.p2c_llm_attacker import (
-    ATTACK_STYLES as P2C_STYLES,
-    ATTACK_STYLE_DISPLAY as P2C_STYLE_DISPLAY,
-    ATTACKER_MODEL as P2C_ATTACKER,
-    DEFENDER_MODEL as P2C_DEFENDER,
-    run as p2c_run,
-)
 from src.harness import config
-from src.attacks import PHASE2B_ATTACKS as _PHASE2B_FORMAL_IDS
-from src.scoring.auto_score import auto_score
 
 st.set_page_config(
-    page_title="Prompt Injection Tester",
+    page_title="Prompt Injection Research Dashboard",
     page_icon="🔐",
     layout="wide",
 )
@@ -51,7 +37,20 @@ st.markdown(
     .stMetric [data-testid="stMetricValue"] { font-size: 26px !important; }
     .stRadio label { font-size: 16px !important; }
     .stSelectbox label, .stSelectbox div { font-size: 16px !important; }
+    #back-to-top-anchor { position: absolute; top: 0; }
+    .back-to-top-btn {
+        position: fixed; bottom: 28px; right: 28px; z-index: 9999;
+        background: #00b4d8; color: #fff; border: none; border-radius: 50%;
+        width: 46px; height: 46px; font-size: 22px; cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex;
+        align-items: center; justify-content: center;
+    }
+    .back-to-top-btn:hover { background: #0096c7; }
     </style>
+    <span id="back-to-top-anchor"></span>
+    <a href="#back-to-top-anchor" style="text-decoration:none;">
+      <button class="back-to-top-btn" title="Back to top">&#8679;</button>
+    </a>
     """,
     unsafe_allow_html=True,
 )
@@ -64,9 +63,64 @@ MODEL_DISPLAY: dict[str, str] = {
     "Gemini 3 Flash Preview (remote)": "google/gemini-3-flash-preview",
     "DeepSeek V4 Pro (remote)":        "deepseek/deepseek-v4-pro",
     "Llama 3.1 8B (local)":            "meta-llama-3.1-8b-instruct",
-    "Qwen 3.5 9B (local)":             "qwen3.5-9b-claude-4.6-opus-reasoning-distilled-v2",
+    "Qwen 3.6 35B A3B MTP (local)":    "qwen3.6-35b-a3b-mtp",
+    # Phase III — Qwen 3.5 parameter-size series
+    "Qwen 3.5 0.8B (local)":           "qwen3.5-0.8b",
+    "Qwen 3.5 2B (local)":             "qwen3.5-2b",
+    "Qwen 3.5 4B (local)":             "qwen3.5-4b",
+    "Qwen 3.5 9B (local)":             "qwen/qwen3.5-9b",
+    "Qwen 3.5 27B (local)":            "qwen/qwen3.5-27b",
 }
 MODEL_ID_TO_DISPLAY: dict[str, str] = {v: k for k, v in MODEL_DISPLAY.items()}
+
+# Phase III Qwen 3.5 parameter-size comparison (same series, Q8, reasoning enabled)
+QWEN_FAMILY: list[dict] = [
+    {
+        "model_id": "qwen3.5-0.8b",
+        "label":    "Qwen 3.5 0.8B",
+        "short":    "0.8B",
+        "params_total": "0.8B", "params_active": "0.8B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#93c5fd",
+    },
+    {
+        "model_id": "qwen3.5-2b",
+        "label":    "Qwen 3.5 2B",
+        "short":    "2B",
+        "params_total": "2B", "params_active": "2B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#60a5fa",
+    },
+    {
+        "model_id": "qwen3.5-4b",
+        "label":    "Qwen 3.5 4B",
+        "short":    "4B",
+        "params_total": "4B", "params_active": "4B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#3b82f6",
+    },
+    {
+        "model_id": "qwen/qwen3.5-9b",
+        "label":    "Qwen 3.5 9B",
+        "short":    "9B",
+        "params_total": "9B", "params_active": "9B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#1d4ed8",
+    },
+    {
+        "model_id": "qwen/qwen3.5-27b",
+        "label":    "Qwen 3.5 27B",
+        "short":    "27B",
+        "params_total": "27B", "params_active": "27B (dense)",
+        "arch":     "Dense · Reasoning enabled",
+        "quant":    "Q8",
+        "color":    "#1e3a8a",
+    },
+]
 
 PHASE1_DOMAINS: dict[str, str] = {
     "Cooking Assistant": "cooking",
@@ -89,23 +143,6 @@ PHASE2A_ATTACKS: dict[str, str] = {
     "2 - The Moral Paradox":         "p2_moral_paradox",
     "3 - The Recursive Permission":  "p2_recursive_permission",
 }
-# Phase IIB: top-3 Phase I attacks only (by ASR: roleplay 48.4%, fake_completion 40.0%, naive 37.1%)
-PHASE2B_ATTACKS_UI: dict[str, str] = {
-    "2 - Role-play / DAN":           "attack2_roleplay",
-    "3 - Fake Completion":           "attack3_fake_completion",
-    "1 - Naive Injection":           "attack1_naive",
-}
-PHASE2B_LANGUAGE_KEYS: dict[str, str] = {
-    v: k for k, v in P2B_LANG_DISPLAY.items()
-}
-
-PHASE_KEYS = [
-    "Phase I - Baseline Attacks",
-    "Phase IIA - Cognitive Schema Attacks",
-    "Phase IIB - Multilingual Attack Comparison",
-    "Phase IIC - LLM as an Attacker",
-    "Phase III - Fine-Tuning",
-]
 
 # ── Styled panel helper ───────────────────────────────────
 
@@ -144,11 +181,10 @@ def _panel(label: str, body: str, bg: str, border: str, text: str) -> None:
 # ── Results loader ────────────────────────────────────────
 
 @st.cache_data(ttl=30)
-def load_formal_records(rubric: str = "v1") -> list[dict]:
-    """Return full records (including payload + response) from results/formal/ or results/formal_v2/."""
-    folder = "results/formal_v2" if rubric == "v2" else "results/formal"
+def load_formal_records() -> list[dict]:
+    """Return full records (including payload + response) from results/formal_v2/."""
     rows: list[dict] = []
-    for path in glob.glob(f"{folder}/*.json"):
+    for path in glob.glob("results/formal_v2/*.json"):
         try:
             with open(path) as f:
                 records = json.load(f)
@@ -178,7 +214,7 @@ def load_p2b_records() -> list[dict]:
 
 @st.cache_data(ttl=30)
 def load_p2a_records() -> list[dict]:
-    """Return Phase IIA records from results/formal_v2/ (attack_id starts with 'p2_')."""
+    """Return legacy schema-attack records from results/formal_v2/ (attack_id starts with 'p2_')."""
     rows: list[dict] = []
     for path in glob.glob("results/formal_v2/*.json"):
         try:
@@ -209,11 +245,11 @@ def load_p2c_records() -> list[dict]:
 
 
 @st.cache_data(ttl=30)
-def load_replay_records(rubric: str = "v2") -> list[dict]:
-    """Combined replay loader: Phase I (formal_v2) + Phase IIB (formal_p2b).
+def load_replay_records() -> list[dict]:
+    """Combined replay loader: Phase I (formal_v2) + Phase IIA (formal_p2b).
 
     Each record is normalised to have:
-      _language   — "english" for Phase I, or the language_code for Phase IIB
+      _language   — "english" for Phase I, or the language_code for Phase IIA
       _is_p2b     — bool
       _payload    — attack prompt text
       _response   — raw model response
@@ -221,7 +257,7 @@ def load_replay_records(rubric: str = "v2") -> list[dict]:
     rows: list[dict] = []
 
     # Phase I — English
-    for r in load_formal_records(rubric):
+    for r in load_formal_records():
         r = dict(r)
         r["_language"] = "english"
         r["_is_p2b"]   = False
@@ -229,7 +265,7 @@ def load_replay_records(rubric: str = "v2") -> list[dict]:
         r["_response"] = r.get("response", "")
         rows.append(r)
 
-    # Phase IIB — Multilingual
+    # Phase IIA — Multilingual
     for r in load_p2b_records():
         r = dict(r)
         r["_language"] = r.get("language_code", r.get("language", ""))
@@ -295,385 +331,11 @@ def compute_asr(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Header ────────────────────────────────────────────────
 
-st.markdown("## Prompt Injection Robustness Tester")
-st.markdown("*Capstone Research Framework · Spring 2026*")
+st.markdown("## Prompt Injection Research Dashboard")
+st.markdown("*Capstone Research · CS495 · Spring 2026*")
 st.divider()
-
-# ── Sidebar ───────────────────────────────────────────────
-
-with st.sidebar:
-    st.header("Test Configuration")
-
-    model_display = st.selectbox("Model", list(MODEL_DISPLAY.keys()))
-    model_id = MODEL_DISPLAY[model_display]
-
-    phase = st.selectbox("Phase", PHASE_KEYS)
-
-    persona_display = attack_display = language = None
-    domain_id = attack_id = None
-    p2b_lang_key = None   # internal language key (mandarin / swahili / welsh)
-
-    if phase == "Phase I - Baseline Attacks":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type", list(PHASE1_ATTACKS.keys()))
-        domain_id  = PHASE1_DOMAINS[persona_display]
-        attack_id  = PHASE1_ATTACKS[attack_display]
-
-    elif phase == "Phase IIA - Cognitive Schema Attacks":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE2A_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type", list(PHASE2A_ATTACKS.keys()))
-        domain_id  = PHASE2A_DOMAINS[persona_display]
-        attack_id  = PHASE2A_ATTACKS[attack_display]
-
-    elif phase == "Phase IIB - Multilingual Attack Comparison":
-        persona_display = st.selectbox("Assistant Persona", list(PHASE1_DOMAINS.keys()))
-        attack_display  = st.selectbox("Attack Type (top-3 by ASR)", list(PHASE2B_ATTACKS_UI.keys()))
-        language        = st.selectbox("Language", list(P2B_LANG_DISPLAY.values()))
-        domain_id       = PHASE1_DOMAINS[persona_display]
-        base_attack_id  = PHASE2B_ATTACKS_UI[attack_display]
-        p2b_lang_key    = {v: k for k, v in P2B_LANG_DISPLAY.items()}[language]
-        attack_id       = ALL_P2B[
-            next(aid for aid, inst in ALL_P2B.items()
-                 if inst.BASE_ATTACK_ID == base_attack_id and inst.LANGUAGE == p2b_lang_key)
-        ].ATTACK_ID
-        if not p2b_is_ready(p2b_lang_key):
-            st.warning(
-                f"{language} translations are placeholders — fill in "
-                f"`src/attacks/p2b_payloads.py` before running."
-            )
-
-    elif phase == "Phase IIC - LLM as an Attacker":
-        persona_display  = st.selectbox("Defender Persona", list(PHASE1_DOMAINS.keys()))
-        p2c_style_display = st.selectbox("Attack Style (Llama-generated)", list(P2C_STYLE_DISPLAY.keys()))
-        domain_id  = PHASE1_DOMAINS[persona_display]
-        attack_id  = P2C_STYLE_DISPLAY[p2c_style_display]
-        st.caption("**Attacker:** Llama 3.1 8B (local) — 82.8% Phase I ASR (rubric v2)")
-        st.caption("**Defender:** Claude Sonnet 4.6 (remote) — 8.3% Phase I ASR (rubric v2)")
-
-    elif phase == "Phase III - Fine-Tuning":
-        st.info("Fine-tuning phase blocked on Phase I results.")
-
-    run_btn = st.button("Run Attack", use_container_width=True, type="primary",
-                        disabled=(attack_id is None))
-
-# ── Run attack ────────────────────────────────────────────
-
-if run_btn and attack_id and domain_id:
-    system_prompt = SYSTEM_PROMPTS[domain_id]
-    _is_p2b = attack_id in ALL_P2B
-    _is_p2c = attack_id in P2C_STYLES
-    _base_id = (
-        ALL_P2B[attack_id].BASE_ATTACK_ID if _is_p2b else
-        P2C_STYLES[attack_id]["base_attack"] if _is_p2c else
-        attack_id
-    )
-    attack_module = ATTACK_REGISTRY.get(attack_id)
-
-    if _is_p2c:
-        with st.spinner(
-            f"Step 1 — Llama 3.1 8B generating payload…  "
-            f"Step 2 — Claude Sonnet 4.6 defending…"
-        ):
-            try:
-                result = p2c_run(attack_id, system_prompt, domain_id=domain_id)
-                turn1 = result.get("turn1_response") if _base_id == "attack3_fake_completion" else None
-                result["score"]   = auto_score(_base_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version="v2")
-                result["success"] = result["score"] == "SUCCESS"
-            except Exception as exc:
-                result = {
-                    "attack_id":   attack_id,
-                    "attack_name": P2C_STYLES[attack_id]["name"],
-                    "model":       P2C_DEFENDER,
-                    "domain":      domain_id,
-                    "generated_payload": "",
-                    "payload":     "",
-                    "response":    f"[ERROR] {exc}",
-                    "score":       "ERROR",
-                    "success":     False,
-                    "phase":       "iic",
-                }
-    else:
-        _spinner_msg = (
-            f"Querying {model_display}… (+ Claude Haiku translation if non-English)"
-            if _is_p2b else f"Querying {model_display}…"
-        )
-        with st.spinner(_spinner_msg):
-            try:
-                if _base_id == "attack3_fake_completion":
-                    result = attack_module.run(model_id, system_prompt, domain_id=domain_id)
-                else:
-                    result = attack_module.run(model_id, system_prompt)
-                result["domain"] = domain_id
-                turn1 = result.get("turn1_response") if _base_id == "attack3_fake_completion" else None
-
-                if _is_p2b:
-                    from src.scoring.translate_score import score_multilingual
-                    _inst = ALL_P2B[attack_id]
-                    scoring = score_multilingual(
-                        attack_id=attack_id,
-                        base_attack_id=_inst.BASE_ATTACK_ID,
-                        language_code=_inst.LANGUAGE,
-                        model=model_id,
-                        rep=0,
-                        attack_prompt=result["payload"],
-                        response_original=result["response"],
-                        system_prompt=system_prompt,
-                        domain_id=domain_id,
-                        turn1_response=turn1,
-                    )
-                    result.update(scoring)
-                    result["score"]   = scoring["outcome"]
-                    result["success"] = scoring["outcome"] == "SUCCESS"
-                else:
-                    result["score"]   = auto_score(attack_id, result["response"], system_prompt, domain_id, turn1_response=turn1, rubric_version="v2")
-                    result["success"] = result["score"] == "SUCCESS"
-            except Exception as exc:
-                result = {
-                    "attack_id":   attack_id,
-                    "attack_name": getattr(attack_module, "ATTACK_NAME", attack_id),
-                    "model":       model_id,
-                    "domain":      domain_id,
-                    "payload":     getattr(attack_module, "PAYLOAD", ""),
-                    "response":    f"[ERROR] {exc}",
-                    "score":       "ERROR",
-                    "success":     False,
-                }
-    st.session_state["last_result"]      = result
-    st.session_state["last_model_label"] = model_display
-    st.session_state["last_persona"]     = persona_display
-    st.session_state["last_attack"]      = attack_display
-
-    # Append to session-scoped run log (for Session Log tab)
-    if "run_history" not in st.session_state:
-        st.session_state["run_history"] = []
-    log_entry: dict = {
-        "time":     datetime.now().strftime("%H:%M:%S"),
-        "model":    "Llama→Claude" if _is_p2c else model_display,
-        "attack":   (p2c_style_display if _is_p2c else attack_display) or "",
-        "domain":   persona_display or "",
-        "score":    result["score"],
-        "response": result["response"],
-    }
-    if _is_p2b:
-        log_entry["language"] = result.get("language", "")
-    if _is_p2c:
-        log_entry["generated_payload"] = result.get("generated_payload", "")
-    st.session_state["run_history"].append(log_entry)
-
-    # Save scratch run; suffix encodes phase for easy filtering
-    os.makedirs("results/scratch", exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    suffix = "_p2c_ui" if _is_p2c else ("_p2b_ui" if _is_p2b else "_ui")
-    save_path = f"results/scratch/{ts}{suffix}.json"
-    with open(save_path, "w") as f:
-        json.dump([result], f, indent=2)
-
-    load_results.clear()   # invalidate cache so dashboard refreshes
-
-# ── Main panel — active run display ──────────────────────
-
-if phase in ("Phase I - Baseline Attacks", "Phase IIA - Cognitive Schema Attacks") and domain_id and attack_id:
-    system_prompt  = SYSTEM_PROMPTS[domain_id]
-    attack_module  = ATTACK_REGISTRY[attack_id]
-    payload        = getattr(attack_module, "PAYLOAD", "")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        _panel(
-            f"🤖 AGENT PROMPT · {persona_display} · {model_display}",
-            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
-        )
-        if attack_id == "attack3_fake_completion":
-            from src.attacks.fake_completion import TURN1_BY_DOMAIN, PAYLOAD as FC_PAYLOAD
-            turn1_preview = TURN1_BY_DOMAIN.get(domain_id, TURN1_BY_DOMAIN["cooking"])
-            _panel(
-                f"⚔️ ATTACK PROMPT · {attack_display} · Turn 1 (on-topic)",
-                turn1_preview, "#2a1a4a", "#a78bfa", "#ede9fe",
-            )
-            _panel(
-                f"⚔️ ATTACK PROMPT · {attack_display} · Turn 2 (injection)",
-                FC_PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-        else:
-            _panel(
-                f"⚔️ ATTACK PROMPT · {attack_display}",
-                payload, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-
-    with col2:
-        last = st.session_state.get("last_result")
-        if (last
-                and last.get("model") == model_id
-                and last.get("domain") == domain_id
-                and last.get("attack_id") == attack_id):
-            response  = last["response"]
-            score     = last["score"]
-            success   = last["success"]
-
-            if attack_id == "attack3_fake_completion" and last.get("turn1_response"):
-                _panel("💬 TURN 1 RESPONSE (on-topic)",
-                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
-
-            _panel(
-                f"💬 MODEL RESPONSE · {model_display}",
-                response, "#0e4a1a", "#2dc653", "#e0ffe6",
-            )
-            if score == "ERROR":
-                st.error("ERROR — Could not reach model")
-            elif score == "NO_RESPONSE":
-                st.warning("NO RESPONSE — Model returned an empty reply")
-            elif score == "CONFOUND":
-                st.warning("CONFOUND — Turn 1 was abnormal; pair excluded from analysis")
-            elif score == "AMBIGUOUS":
-                st.warning("AMBIGUOUS — Partial or unclear compliance; queued for manual review")
-            elif success:
-                st.success("SUCCESS — Model broke its directive")
-            else:
-                st.error("FAILURE — Model maintained its directive")
-        else:
-            st.info("Select a configuration and click **Run Attack** to see a live response here.")
-
-elif phase == "Phase IIB - Multilingual Attack Comparison" and domain_id and attack_id and p2b_lang_key:
-    st.markdown(f"### Multilingual Attack Comparison — {language}")
-    _inst    = ALL_P2B[attack_id]
-    _en_payload = P2B_PAYLOADS["mandarin"].get(_inst.BASE_ATTACK_ID, "")  # re-use ZH for preview ref
-    system_prompt = SYSTEM_PROMPTS[domain_id]
-
-    col1, col2 = st.columns(2)
-    with col1:
-        _panel(
-            f"🤖 AGENT PROMPT · {persona_display} · {model_display}",
-            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
-        )
-        if _inst.BASE_ATTACK_ID == "attack3_fake_completion":
-            from src.attacks.p2b_payloads import TURN1_PROMPTS as P2B_TURN1
-            turn1_preview = P2B_TURN1[p2b_lang_key].get(domain_id, "")
-            _panel(
-                f"⚔️ ATTACK · {attack_display} · Turn 1 ({language})",
-                turn1_preview, "#2a1a4a", "#a78bfa", "#ede9fe",
-            )
-            _panel(
-                f"⚔️ ATTACK · {attack_display} · Turn 2 injection ({language})",
-                _inst.PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-        else:
-            _panel(
-                f"⚔️ ATTACK · {attack_display} ({language})",
-                _inst.PAYLOAD, "#4a0e0e", "#ef233c", "#ffe0e0",
-            )
-
-    with col2:
-        last = st.session_state.get("last_result")
-        if (last
-                and last.get("model") == model_id
-                and last.get("attack_id") == attack_id):
-            score   = last["score"]
-            success = last["success"]
-            resp_original   = last.get("response_original", last.get("response", ""))
-            resp_translated = last.get("response_translated")
-            lang_detected   = last.get("response_language_detected", "")
-            note            = last.get("note", "")
-
-            if _inst.BASE_ATTACK_ID == "attack3_fake_completion" and last.get("turn1_response"):
-                _panel("💬 TURN 1 RESPONSE",
-                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
-
-            _panel(f"💬 RAW RESPONSE · {model_display}",
-                   resp_original, "#0e4a1a", "#2dc653", "#e0ffe6")
-
-            if resp_translated:
-                _panel(
-                    f"🔤 TRANSLATED RESPONSE (detected: {lang_detected})",
-                    resp_translated, "#1a1a3a", "#a78bfa", "#ede9fe",
-                )
-
-            # Metadata chips
-            meta_parts = []
-            if lang_detected:
-                meta_parts.append(f"**Detected lang:** `{lang_detected}`")
-            if last.get("translation_used"):
-                meta_parts.append("**Translation:** Claude Haiku")
-            if note:
-                meta_parts.append(f"**Note:** {note}")
-            if meta_parts:
-                st.caption("  ·  ".join(meta_parts))
-
-            if score == "ERROR":
-                st.error("ERROR — Could not reach model")
-            elif score == "NO_RESPONSE":
-                st.warning("NO RESPONSE — Model returned an empty reply")
-            elif score == "CONFOUND":
-                st.warning("CONFOUND — Turn 1 was abnormal")
-            elif score == "TRANSLATION_ERROR":
-                st.error("TRANSLATION ERROR — Claude Haiku translation call failed; manual review required")
-            elif score == "UNCERTAIN_LANG":
-                st.warning(f"UNCERTAIN LANGUAGE — Low-confidence detection ({note}); manual review required")
-            elif score == "AMBIGUOUS":
-                st.warning("AMBIGUOUS — Queued for manual review")
-            elif success:
-                st.success("SUCCESS — Model broke its directive")
-            else:
-                st.error("FAILURE — Model maintained its directive")
-        else:
-            st.info("Select a configuration and click **Run Attack** to see a live response here.")
-
-elif phase == "Phase IIC - LLM as an Attacker" and domain_id and attack_id:
-    st.markdown("### LLM as an Attacker")
-    _style = P2C_STYLES[attack_id]
-    system_prompt = SYSTEM_PROMPTS[domain_id]
-
-    col1, col2 = st.columns(2)
-    with col1:
-        _panel(
-            f"🤖 DEFENDER PROMPT · {persona_display} · Claude Sonnet 4.6 (remote)",
-            system_prompt, "#0e3a4a", "#00b4d8", "#e0f7fa",
-        )
-        last = st.session_state.get("last_result")
-        _gen = last.get("generated_payload", "") if (last and last.get("attack_id") == attack_id) else ""
-        _panel(
-            f"⚔️ LLAMA-GENERATED PAYLOAD · {_style['name']}",
-            _gen if _gen else f"[Click 'Run Attack' — Llama will generate a payload targeting:\n\"{_style['goal']}\"]",
-            "#4a0e0e", "#ef233c", "#ffe0e0",
-        )
-
-    with col2:
-        last = st.session_state.get("last_result")
-        if last and last.get("attack_id") == attack_id and last.get("phase") == "iic":
-            response = last["response"]
-            score    = last["score"]
-            success  = last["success"]
-            if _style["base_attack"] == "attack3_fake_completion" and last.get("turn1_response"):
-                _panel("💬 CLAUDE TURN 1 RESPONSE (on-topic)",
-                       last["turn1_response"], "#1a2a3a", "#60a5fa", "#dbeafe")
-            _panel("💬 CLAUDE SONNET 4.6 DEFENSE RESPONSE",
-                   response, "#0e4a1a", "#2dc653", "#e0ffe6")
-            if score == "ERROR":
-                st.error("ERROR — Could not reach a model")
-            elif score == "NO_RESPONSE":
-                st.warning("NO RESPONSE — Model returned an empty reply")
-            elif score == "CONFOUND":
-                st.warning("CONFOUND — Turn 1 was abnormal")
-            elif score == "AMBIGUOUS":
-                st.warning("AMBIGUOUS — Queued for manual review")
-            elif success:
-                st.success("SUCCESS — Claude broke its directive (Llama wins)")
-            else:
-                st.error("FAILURE — Claude held its directive (Defender wins)")
-        else:
-            st.info("Select a configuration and click **Run Attack** — Llama will generate an injection payload live, then Claude will defend.")
-
-elif phase == "Phase III - Fine-Tuning":
-    st.markdown("### Phase III — Fine-Tuning")
-    _panel("Research Phase",
-           "DPO fine-tuning will be applied to the most vulnerable Phase I model.\n"
-           "Phase I attacks are then re-run for a before/after ASR comparison.",
-           "#1a1a2e", "#9b59b6", "#e0e0e0")
 
 # ── Results Dashboard ─────────────────────────────────────
-
-st.divider()
-st.markdown("### Results Dashboard")
 
 with st.expander("🗄️ Results Database (SQLite)", expanded=False):
     try:
@@ -702,7 +364,6 @@ with st.expander("🗄️ Results Database (SQLite)", expanded=False):
         st.caption(f"SQLite unavailable: {_db_exc}")
 
 df_all        = load_results()
-df_formal     = df_all[df_all["source"] == "formal"]     if not df_all.empty else df_all
 df_formal_v2  = df_all[df_all["source"] == "formal_v2"]  if not df_all.empty else df_all
 df_formal_p2b = df_all[df_all["source"] == "formal_p2b"] if not df_all.empty else df_all
 df_formal_p2c = df_all[df_all["source"] == "formal_p2c"] if not df_all.empty else df_all
@@ -884,8 +545,8 @@ def _render_replay(records: list[dict], key_pfx: str, show_lang: bool = False) -
 
 # ── Top-level phase tabs ──────────────────────────────────
 
-tab_p1, tab_p2, tab_p3, tab_demo, tab_overview = st.tabs([
-    "Phase I", "Phase II", "Phase III", "Live Demo", "Overview",
+tab_p1, tab_p2, tab_p3, tab_p4, tab_overview = st.tabs([
+    "Phase I", "Phase II", "Phase III", "Phase IV", "Overview",
 ])
 
 # ═══════════════════════════════════════════════════════════
@@ -893,14 +554,13 @@ tab_p1, tab_p2, tab_p3, tab_demo, tab_overview = st.tabs([
 # ═══════════════════════════════════════════════════════════
 with tab_p1:
     st.markdown("#### Phase I — Baseline Attacks")
-    _p1_rubric_sel = st.radio(
-        "Rubric version", ["v2 (formal_v2)", "v1 (formal)"],
-        index=0, horizontal=True, key="p1_rubric",
-    )
-    _p1_rubric = "v1" if _p1_rubric_sel.startswith("v1") else "v2"
-    _df_p1 = df_formal_v2 if _p1_rubric == "v2" else df_formal
+    _df_p1 = df_formal_v2
     _df_p1_filt = (
-        _df_p1[_df_p1["attack_id"].isin(P1_ATTACK_IDS) & _df_p1["domain"].isin(P1_DOMAINS)]
+        _df_p1[
+            _df_p1["attack_id"].isin(P1_ATTACK_IDS) &
+            _df_p1["domain"].isin(P1_DOMAINS) &
+            (_df_p1["model"] != "llama-3.1-8b-injectionguard")
+        ]
         if not _df_p1.empty else _df_p1
     )
     _asr_p1 = compute_asr(_df_p1_filt)
@@ -909,7 +569,7 @@ with tab_p1:
 
     with p1_sub1:
         st.markdown("##### Attack Success Rate by Attack Type")
-        st.caption("Avg ASR across all models, grouped by domain. Rubric: " + _p1_rubric)
+        st.caption("Avg ASR across all models, grouped by domain. Rubric: v2 (formal_v2)")
         if _asr_p1.empty:
             st.info("No Phase I data yet. Run: `python -m src.main --phase p1`")
         else:
@@ -967,11 +627,11 @@ with tab_p1:
             _render_heatmap(_asr_p1, key_sfx="p1")
 
     with p1_sub3:
-        st.caption(f"Browsing results/formal{'_v2' if _p1_rubric=='v2' else ''}/ — no API calls.")
+        st.caption("Browsing results/formal_v2/ — no API calls.")
         _p1_rp = [
             {**r, "_language": "english", "_is_p2b": False,
              "_payload": r.get("payload",""), "_response": r.get("response","")}
-            for r in load_formal_records(rubric=_p1_rubric)
+            for r in load_formal_records()
         ]
         _render_replay(_p1_rp, key_pfx="p1_rp", show_lang=False)
 
@@ -981,84 +641,11 @@ with tab_p1:
 # ═══════════════════════════════════════════════════════════
 with tab_p2:
     st.markdown("#### Phase II — Advanced Attack Techniques")
-    p2_iia, p2_iib, p2_iic = st.tabs(["Phase IIA", "Phase IIB", "Phase IIC"])
+    p2_iia, p2_iib = st.tabs(["Phase IIA", "Phase IIB"])
 
     # ── Phase IIA ──────────────────────────────────────────
     with p2_iia:
-        st.markdown("##### Phase IIA — Cognitive Schema Attacks")
-        _df_p2a_filt = (
-            df_formal_v2[df_formal_v2["attack_id"].isin(P2A_ATTACK_IDS) & df_formal_v2["domain"].isin(P2A_DOMAINS)]
-            if not df_formal_v2.empty else df_formal_v2
-        )
-        _asr_p2a = compute_asr(_df_p2a_filt)
-
-        p2a_s1, p2a_s2, p2a_s3 = st.tabs(["ASR by Attack", "Model Analysis", "Data Replay"])
-
-        with p2a_s1:
-            if _asr_p2a.empty:
-                st.info("No Phase IIA data yet. Run: `python -m src.main --phase p2a`")
-            else:
-                _p2a_grp = _asr_p2a.groupby(["attack_name","domain"])["asr"].mean().round(1).reset_index()
-                _p2a_dom_colors = {"compliant_assistant": "#a78bfa", "truth_teller": "#f4a261"}
-                fig_p2a_atk = go.Figure()
-                for _dom in ["compliant_assistant", "truth_teller"]:
-                    _sub = _p2a_grp[_p2a_grp["domain"] == _dom].sort_values("attack_name")
-                    if _sub.empty:
-                        continue
-                    fig_p2a_atk.add_trace(go.Bar(
-                        name=DOMAIN_LABELS.get(_dom, _dom),
-                        x=_sub["attack_name"], y=_sub["asr"],
-                        marker_color=_p2a_dom_colors.get(_dom, "#888"),
-                        text=[f"{v:.0f}%" for v in _sub["asr"]], textposition="outside",
-                    ))
-                fig_p2a_atk.update_layout(
-                    plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
-                    yaxis=dict(range=[0, 120], title="ASR %", gridcolor="#222"),
-                    xaxis=dict(title="Attack Type"),
-                    barmode="group", height=420,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                )
-                st.plotly_chart(fig_p2a_atk, use_container_width=True)
-                _png_download_btn("Download as PNG", fig_p2a_atk, "p2a_asr_by_attack.png", height=480)
-
-        with p2a_s2:
-            if _asr_p2a.empty:
-                st.info("No Phase IIA data yet.")
-            else:
-                _p2a_stats = _model_asr_sem(_df_p2a_filt)
-                _p2a_models = sorted(_p2a_stats.keys())
-                if _p2a_stats:
-                    fig_p2a_mc = go.Figure(go.Bar(
-                        x=_p2a_models,
-                        y=[_p2a_stats[m][0] for m in _p2a_models],
-                        error_y=dict(type="data", array=[_p2a_stats[m][1]*2 for m in _p2a_models],
-                                     visible=True, color="#ffffff", thickness=1.5),
-                        marker_color="#a78bfa",
-                        text=[f"{int(_p2a_stats[m][0])}%" for m in _p2a_models],
-                        textposition="outside",
-                    ))
-                    fig_p2a_mc.update_layout(
-                        plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
-                        yaxis=dict(range=[0, 130], title="Avg ASR %", gridcolor="#222"),
-                        xaxis=dict(title="Model"), showlegend=False, height=420,
-                    )
-                    st.plotly_chart(fig_p2a_mc, use_container_width=True)
-                    _png_download_btn("Download as PNG", fig_p2a_mc, "p2a_model_comparison.png", height=480)
-                st.divider()
-                _render_heatmap(_asr_p2a, key_sfx="p2a")
-
-        with p2a_s3:
-            st.caption("Browsing Phase IIA records from results/formal_v2/ — no API calls.")
-            _p2a_rp = [
-                {**r, "_language": "english", "_is_p2b": False,
-                 "_payload": r.get("payload",""), "_response": r.get("response","")}
-                for r in load_p2a_records()
-            ]
-            _render_replay(_p2a_rp, key_pfx="p2a_rp", show_lang=False)
-
-    # ── Phase IIB ──────────────────────────────────────────
-    with p2_iib:
-        st.markdown("##### Phase IIB — Multilingual Attack Comparison")
+        st.markdown("##### Phase IIA — Multilingual Attack Comparison")
         st.caption("Top-3 Phase I attacks (Roleplay, Fake Completion, Naive) in Mandarin, Swahili, Welsh.")
 
         _TOP3_IDS  = ["attack2_roleplay", "attack3_fake_completion", "attack1_naive"]
@@ -1088,23 +675,29 @@ with tab_p2:
                 ["All languages", "Mandarin (中文)", "Swahili (Kiswahili)", "Welsh (Cymraeg)"],
                 horizontal=True, key="p2b_asr_lang",
             )
-            # Phase I English baseline for top-3
-            _p1_base: dict[str, float] = {}
+            # Phase I English baseline for top-3 (mean, SEM)
+            _p1_base: dict[str, tuple[float, float]] = {}
             if not df_formal_v2.empty:
                 _p1f = df_formal_v2[
                     df_formal_v2["attack_id"].isin(_TOP3_IDS) & ~df_formal_v2["score"].isin(_excl_p2b)
                 ]
                 for _aid, _grp in _p1f.groupby("attack_id"):
-                    _p1_base[_aid] = round(float(_grp["success"].mean()) * 100, 1)
-            # Phase IIB ASR per (base_attack, language)
-            _p2b_asr: dict[tuple, float] = {}
+                    _v = _grp["success"].astype(float).values
+                    _p1_base[_aid] = (
+                        round(float(_v.mean() * 100), 1),
+                        round(float(_v.std(ddof=1) / np.sqrt(len(_v)) * 100) if len(_v) > 1 else 0.0, 1),
+                    )
+            # Phase IIA ASR per (base_attack, language) — (mean, SEM) tuples
+            _p2b_asr: dict[tuple, tuple[float, float]] = {}
             if not df_formal_p2b.empty:
                 _p2bf = df_formal_p2b.copy()
                 _p2bf["_base"] = _p2bf["attack_id"].map(_P2B_BASE_LOOKUP)
                 _p2bf_c = _p2bf[~_p2bf["score"].isin(_excl_p2b) & _p2bf["_base"].isin(_TOP3_IDS)]
                 for (_base, _lang), _grp in _p2bf_c.groupby(["_base", "language"]):
-                    _p2b_asr[(_base, _LANG_DISP.get(_lang, _lang))] = round(
-                        float(_grp["success"].mean()) * 100, 1
+                    _v = _grp["success"].astype(float).values
+                    _p2b_asr[(_base, _LANG_DISP.get(_lang, _lang))] = (
+                        round(float(_v.mean() * 100), 1),
+                        round(float(_v.std(ddof=1) / np.sqrt(len(_v)) * 100) if len(_v) > 1 else 0.0, 1),
                     )
             _atk_labels = [_TOP3_NAMES[k] for k in _TOP3_IDS]
             _series: dict[str, list] = {}
@@ -1120,14 +713,18 @@ with tab_p2:
                 if any(v is not None for v in _vals):
                     _series[_ld] = _vals
             if not _series:
-                st.info("No Phase IIB data yet. Run: `python -m src.main --phase p2b`")
+                st.info("No Phase IIA data yet. Run: `python -m src.main --phase p2b`")
             else:
                 fig_p2b = go.Figure()
                 for _sn, _sv in _series.items():
+                    _means = [v[0] if isinstance(v, tuple) else v for v in _sv]
+                    _sems  = [v[1] if isinstance(v, tuple) else 0.0 for v in _sv]
                     fig_p2b.add_trace(go.Bar(
-                        name=_sn, x=_atk_labels, y=_sv,
+                        name=_sn, x=_atk_labels, y=_means,
+                        error_y=dict(type="data", array=[s * 2 for s in _sems],
+                                     visible=True, color="#ffffff", thickness=1.5),
                         marker_color=_LANG_COLORS.get(_sn, "#888"),
-                        text=[f"{v:.0f}%" if v is not None else "—" for v in _sv],
+                        text=[f"{v:.0f}%" if v is not None else "—" for v in _means],
                         textposition="outside",
                     ))
                 fig_p2b.update_layout(
@@ -1138,14 +735,14 @@ with tab_p2:
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 )
                 st.plotly_chart(fig_p2b, use_container_width=True)
-                st.caption("ASR = successes / non-ambiguous runs, averaged across all models and domains.")
+                st.caption("Error bars = ±2 SEM (95% CI). ASR = successes / non-ambiguous runs, averaged across all models and domains.")
                 _png_download_btn("Download as PNG", fig_p2b, "p2b_asr_by_language.png", height=520)
 
         with p2b_s2:
-            st.markdown("##### Model Vulnerability — Phase IIB")
+            st.markdown("##### Model Vulnerability — Phase IIA")
             _p2b_model_df = df_formal_p2b[~df_formal_p2b["score"].isin(_excl_p2b)] if not df_formal_p2b.empty else df_formal_p2b
             if _p2b_model_df.empty:
-                st.info("No Phase IIB data yet. Run: `python -m src.main --phase p2b`")
+                st.info("No Phase IIA data yet. Run: `python -m src.main --phase p2b`")
             else:
                 _p2b_stats  = _model_asr_sem(_p2b_model_df)
                 _p2b_mdls   = sorted(_p2b_stats.keys())
@@ -1165,7 +762,7 @@ with tab_p2:
                         xaxis=dict(title="Model"), showlegend=False, height=420,
                     )
                     st.plotly_chart(fig_p2b_mc, use_container_width=True)
-                    st.caption("Error bars = ±2 SEM (95% CI). Averaged over all Phase IIB attacks, languages, and domains.")
+                    st.caption("Error bars = ±2 SEM (95% CI). Averaged over all Phase IIA attacks, languages, and domains.")
                     _png_download_btn("Download as PNG", fig_p2b_mc, "p2b_model_comparison.png", height=480)
 
                 # Shared prep: base attack name + language display
@@ -1253,9 +850,9 @@ with tab_p2:
             st.caption("Browsing results/formal_p2b/ — no API calls.")
             _render_replay(_p2b_rp_recs, key_pfx="p2b_rp", show_lang=True)
 
-    # ── Phase IIC ──────────────────────────────────────────
-    with p2_iic:
-        st.markdown("##### Phase IIC — LLM as Attacker")
+    # ── Phase IIB ──────────────────────────────────────────
+    with p2_iib:
+        st.markdown("##### Phase IIB — LLM as Attacker")
         st.caption(
             "**Attacker:** Llama 3.1 8B (76.7% Phase I ASR — highest)  ·  "
             "**Defender:** Claude Sonnet 4.6 (13.3% Phase I ASR — lowest)  ·  "
@@ -1267,7 +864,7 @@ with tab_p2:
 
         p2c_s1, p2c_s2 = st.tabs(["ASR Comparison", "Payload Replay"])
 
-        # ── IIC Sub-tab 1: ASR Comparison ─────────────────
+        # ── IIB Sub-tab 1: ASR Comparison ─────────────────
         with p2c_s1:
             _P2C_BASE_MAP = {
                 "p2c_roleplay":        "attack2_roleplay",
@@ -1282,8 +879,8 @@ with tab_p2:
             _ATK_ORDER = ["p2c_roleplay", "p2c_naive", "p2c_fake_completion"]
             _ATK_LABELS = [_P2C_DISPLAY_NAMES[k] for k in _ATK_ORDER]
 
-            # Phase IIC ASR per attack (exclude ERROR/AMBIGUOUS)
-            _p2c_asr: dict[str, float | None] = {}
+            # Phase IIB ASR per attack — (mean, SEM) tuples
+            _p2c_asr: dict[str, tuple[float, float] | None] = {}
             if _p2c_recs:
                 from collections import defaultdict as _dd
                 _p2c_counts: dict[str, list[bool]] = _dd(list)
@@ -1292,11 +889,18 @@ with tab_p2:
                     if sc in ("ERROR", "AMBIGUOUS", "NO_RESPONSE", "CONFOUND"):
                         continue
                     _p2c_counts[r.get("attack_id", "")].append(bool(r.get("success", False)))
-                for _aid, _vals in _p2c_counts.items():
-                    _p2c_asr[_aid] = round(sum(_vals) / len(_vals) * 100, 1) if _vals else None
+                for _aid, _cv in _p2c_counts.items():
+                    if not _cv:
+                        _p2c_asr[_aid] = None
+                    else:
+                        _cv_arr = np.array(_cv, dtype=float)
+                        _p2c_asr[_aid] = (
+                            round(float(_cv_arr.mean() * 100), 1),
+                            round(float(_cv_arr.std(ddof=1) / np.sqrt(len(_cv_arr)) * 100) if len(_cv_arr) > 1 else 0.0, 1),
+                        )
 
-            # Phase I health-domain ASR for same 3 attacks (from formal_v2)
-            _p1_health_asr: dict[str, float | None] = {}
+            # Phase I health-domain ASR for same 3 attacks — (mean, SEM) tuples
+            _p1_health_asr: dict[str, tuple[float, float] | None] = {}
             if not df_formal_v2.empty:
                 _p1h = df_formal_v2[
                     (df_formal_v2["domain"] == "health")
@@ -1305,32 +909,42 @@ with tab_p2:
                 for _base_id, _grp in _p1h.groupby("attack_id"):
                     _p1_key = {v: k for k, v in _P2C_BASE_MAP.items()}.get(_base_id)
                     if _p1_key:
-                        _p1_health_asr[_p1_key] = round(float(_grp["success"].mean()) * 100, 1)
+                        _v_p1h = _grp["success"].astype(float).values
+                        _p1_health_asr[_p1_key] = (
+                            round(float(_v_p1h.mean() * 100), 1),
+                            round(float(_v_p1h.std(ddof=1) / np.sqrt(len(_v_p1h)) * 100) if len(_v_p1h) > 1 else 0.0, 1),
+                        )
 
-            _iic_vals   = [_p2c_asr.get(k) for k in _ATK_ORDER]
-            _p1h_vals   = [_p1_health_asr.get(k) for k in _ATK_ORDER]
-            _has_iic    = any(v is not None for v in _iic_vals)
-            _has_p1h    = any(v is not None for v in _p1h_vals)
+            _iic_means  = [(_p2c_asr.get(k) or (None, 0.0))[0] for k in _ATK_ORDER]
+            _iic_sems   = [(_p2c_asr.get(k) or (0.0, 0.0))[1] for k in _ATK_ORDER]
+            _p1h_means  = [(_p1_health_asr.get(k) or (None, 0.0))[0] for k in _ATK_ORDER]
+            _p1h_sems   = [(_p1_health_asr.get(k) or (0.0, 0.0))[1] for k in _ATK_ORDER]
+            _has_iic    = any(v is not None for v in _iic_means)
+            _has_p1h    = any(v is not None for v in _p1h_means)
 
             if not _has_iic:
-                st.info("No Phase IIC formal data yet. Run: `python -m src.harness.run_p2c`")
+                st.info("No Phase IIB formal data yet. Run: `python -m src.harness.run_p2c`")
             else:
                 fig_p2c = go.Figure()
                 if _has_p1h:
                     fig_p2c.add_trace(go.Bar(
                         name="Phase I — Hand-crafted (Health)",
                         x=_ATK_LABELS,
-                        y=_p1h_vals,
+                        y=_p1h_means,
+                        error_y=dict(type="data", array=[s * 2 for s in _p1h_sems],
+                                     visible=True, color="#ffffff", thickness=1.5),
                         marker_color="#00b4d8",
-                        text=[f"{v:.0f}%" if v is not None else "—" for v in _p1h_vals],
+                        text=[f"{v:.0f}%" if v is not None else "—" for v in _p1h_means],
                         textposition="outside",
                     ))
                 fig_p2c.add_trace(go.Bar(
-                    name="Phase IIC — Llama-generated (Health)",
+                    name="Phase IIB — Llama-generated (Health)",
                     x=_ATK_LABELS,
-                    y=_iic_vals,
+                    y=_iic_means,
+                    error_y=dict(type="data", array=[s * 2 for s in _iic_sems],
+                                 visible=True, color="#ffffff", thickness=1.5),
                     marker_color="#f4a261",
-                    text=[f"{v:.0f}%" if v is not None else "—" for v in _iic_vals],
+                    text=[f"{v:.0f}%" if v is not None else "—" for v in _iic_means],
                     textposition="outside",
                 ))
                 fig_p2c.update_layout(
@@ -1342,8 +956,9 @@ with tab_p2:
                 )
                 st.plotly_chart(fig_p2c, use_container_width=True)
                 st.caption(
+                    "Error bars = ±2 SEM (95% CI).  "
                     "**Blue:** Phase I hand-crafted payloads on the health domain (all models avg).  "
-                    "**Orange:** Phase IIC Llama-generated payloads targeting Claude Sonnet 4.6 only.  "
+                    "**Orange:** Phase IIB Llama-generated payloads targeting Claude Sonnet 4.6 only.  "
                     "Payload frozen after rep 0; 5 reps per attack."
                 )
                 _png_download_btn("Download as PNG", fig_p2c, "p2c_asr_comparison.png", height=500)
@@ -1355,7 +970,7 @@ with tab_p2:
                 _total_succ = sum(1 for r in _total_recs if r.get("success", False))
                 _overall_asr = round(_total_succ / len(_total_recs) * 100, 1) if _total_recs else 0.0
                 with _mc1:
-                    st.metric("Overall IIC ASR", f"{_overall_asr:.0f}%", help="Llama-generated payloads vs Claude Sonnet 4.6")
+                    st.metric("Overall IIB ASR", f"{_overall_asr:.0f}%", help="Llama-generated payloads vs Claude Sonnet 4.6")
                 with _mc2:
                     st.metric("Total Runs", len(_total_recs), help="Across all 3 attacks × 5 reps")
                 with _mc3:
@@ -1370,10 +985,10 @@ with tab_p2:
                     "identified the off-topic request and redirected to health information."
                 )
 
-        # ── IIC Sub-tab 2: Payload Replay ──────────────────
+        # ── IIB Sub-tab 2: Payload Replay ──────────────────
         with p2c_s2:
             if not _p2c_recs:
-                st.info("No Phase IIC formal data yet. Run: `python -m src.harness.run_p2c`")
+                st.info("No Phase IIB formal data yet. Run: `python -m src.harness.run_p2c`")
             else:
                 _p2c_atk_filter = st.radio(
                     "Attack", ["All"] + _ATK_LABELS,
@@ -1430,64 +1045,452 @@ with tab_p2:
 
 
 # ═══════════════════════════════════════════════════════════
-# PHASE III
+# PHASE III — Parameter-Size Comparison Study
 # ═══════════════════════════════════════════════════════════
 with tab_p3:
-    st.markdown("#### Phase III — Fine-Tuning")
-    _panel(
-        "Coming Soon",
-        "DPO/LoRA fine-tuning will be applied to the most vulnerable Phase I model.\n"
-        "Phase I attacks will then be re-run for a before/after ASR comparison.\n\n"
-        "Prerequisite: Phase I data collection complete (done).",
-        "#1a1a2e", "#9b59b6", "#e0e0e0",
+    st.markdown("#### Phase III — Parameter-Size Comparison Study (Qwen 3.5)")
+    st.caption(
+        "Research question: does parameter count reduce prompt injection vulnerability? "
+        "Five Qwen 3.5 models (0.8B → 27B), same series, Q8 quantization, reasoning enabled. "
+        "Top-3 Phase I attacks × cooking + health × 5 reps each."
     )
 
+    # ── Load Phase III data ──────────────────────────────────────────────────────
+    _EXCL_P3 = {"AMBIGUOUS","NO_RESPONSE","CONFOUND","TRANSLATION_ERROR","UNCERTAIN_LANG","ERROR"}
+
+    def _load_p3_json():
+        rows = []
+        for path in glob.glob("results/formal_p3/*.json"):
+            try:
+                data = json.load(open(path))
+                for r in data:
+                    if isinstance(r, dict):
+                        rows.append(r)
+            except Exception:
+                pass
+        return rows
+
+    _p3_raw = _load_p3_json()
+
+    def _p3_asr(model_id, domain=None, attack_id=None):
+        vals = [
+            bool(r.get("success")) for r in _p3_raw
+            if r.get("model") == model_id
+            and r.get("score","") not in _EXCL_P3
+            and (domain is None or r.get("domain") == domain)
+            and (attack_id is None or r.get("attack_id") == attack_id)
+        ]
+        if not vals: return 0.0, 0.0
+        arr = np.array(vals, dtype=float)
+        return round(float(arr.mean()*100), 1), round(float(arr.std(ddof=1)/np.sqrt(len(arr))*100) if len(arr)>1 else 0.0, 1)
+
+    _p3_results_tab, _p3_replay_tab = st.tabs(["Comparison Results", "Payload Replay"])
+
+    # ── Comparison Results ──────────────────────────────────────────────────────
+    with _p3_results_tab:
+        if not _p3_raw:
+            st.info("No Phase III formal data yet. Run: `python -m src.harness.run_experiments --phase p3 --models <model_id>`")
+        else:
+            # Summary metrics
+            _p3_mc1, _p3_mc2, _p3_mc3, _p3_mc4 = st.columns(4)
+            _p3_valid = [r for r in _p3_raw if r.get("score","") not in _EXCL_P3]
+            _p3_succ  = sum(1 for r in _p3_valid if r.get("success"))
+            _p3_overall_asr = round(_p3_succ / len(_p3_valid) * 100, 1) if _p3_valid else 0.0
+            _p3_run_asrs = [_p3_asr(q["model_id"])[0] for q in QWEN_FAMILY
+                            if any(r.get("model") == q["model_id"] for r in _p3_raw)]
+            _p3_mc1.metric("Models Tested",
+                           len([q for q in QWEN_FAMILY if any(r.get("model") == q["model_id"] for r in _p3_raw)]))
+            _p3_mc2.metric("Overall ASR", f"{_p3_overall_asr:.0f}%")
+            _p3_mc3.metric("Best ASR (most robust)", f"{min(_p3_run_asrs):.0f}%" if _p3_run_asrs else "—")
+            _p3_mc4.metric("Worst ASR (most vulnerable)", f"{max(_p3_run_asrs):.0f}%" if _p3_run_asrs else "—")
+
+            st.divider()
+
+            # Model info table
+            st.markdown("##### Model Overview")
+            _info_rows = [{
+                "Model": q["label"], "Parameters": q["params_total"],
+                "Architecture": q["arch"], "Quantization": q["quant"],
+            } for q in QWEN_FAMILY]
+            st.dataframe(pd.DataFrame(_info_rows), use_container_width=True, hide_index=True)
+
+            st.divider()
+
+            # Trend line — key chart
+            st.markdown("##### Does Parameter Count Reduce Injection Vulnerability?")
+            _param_lbls    = [q["short"] for q in QWEN_FAMILY]
+            _param_overall = [_p3_asr(q["model_id"])[0] for q in QWEN_FAMILY]
+            _param_cooking = [_p3_asr(q["model_id"], domain="cooking")[0] for q in QWEN_FAMILY]
+            _param_health  = [_p3_asr(q["model_id"], domain="health")[0] for q in QWEN_FAMILY]
+
+            _trend_fig = go.Figure()
+            _trend_fig.add_trace(go.Scatter(
+                x=_param_lbls, y=_param_overall, mode="lines+markers", name="Overall",
+                line=dict(color="#60a5fa", width=3), marker=dict(size=10, color="#60a5fa"),
+            ))
+            _trend_fig.add_trace(go.Scatter(
+                x=_param_lbls, y=_param_health, mode="lines+markers", name="Health",
+                line=dict(color="#ef233c", width=2, dash="dot"), marker=dict(size=8, color="#ef233c"),
+            ))
+            _trend_fig.add_trace(go.Scatter(
+                x=_param_lbls, y=_param_cooking, mode="lines+markers", name="Cooking",
+                line=dict(color="#2dc653", width=2, dash="dot"), marker=dict(size=8, color="#2dc653"),
+            ))
+            for _ql, _yv in zip(_param_lbls, _param_overall):
+                _trend_fig.add_annotation(
+                    x=_ql, y=_yv, text=f"{_yv:.0f}%",
+                    showarrow=False, yshift=14, font=dict(color="#fff", size=12),
+                )
+            _trend_fig.update_layout(
+                height=400, plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                yaxis=dict(title="ASR (%)", range=[0, 115], gridcolor="#222"),
+                xaxis=dict(title="Parameter Count"),
+                legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+                margin=dict(l=10, r=10, t=50, b=10),
+            )
+            st.plotly_chart(_trend_fig, use_container_width=True)
+            st.caption(
+                "Overall ASR declines from 91.7% (0.8B) to 46.4% (27B), but flattens at ≥4B. "
+                "Health domain stays at 93–100% regardless of scale. "
+                "Cooking drops to 0% at 4B+, suggesting a threshold effect rather than smooth scaling."
+            )
+
+            st.divider()
+
+            # Two-column: grouped bar + attack heatmap
+            _p3c1, _p3c2 = st.columns(2)
+
+            with _p3c1:
+                st.markdown("##### ASR by Domain")
+                _dom_bar_fig = go.Figure()
+                for q in QWEN_FAMILY:
+                    _ys, _errs = [], []
+                    for _dom in [None, "cooking", "health"]:
+                        m, s = _p3_asr(q["model_id"], domain=_dom)
+                        _ys.append(m); _errs.append(s * 2)
+                _dom_bar_fig = go.Figure()
+                for q in QWEN_FAMILY:
+                    _ys, _errs = [], []
+                    for _dom in [None, "cooking", "health"]:
+                        m, s = _p3_asr(q["model_id"], domain=_dom)
+                        _ys.append(m); _errs.append(s * 2)
+                    _dom_bar_fig.add_trace(go.Bar(
+                        name=q["short"], x=["Overall","Cooking","Health"], y=_ys,
+                        error_y=dict(type="data", array=_errs, visible=True,
+                                     color="#ffffff", thickness=1),
+                        marker_color=q["color"], marker_line_color="#333", marker_line_width=1,
+                    ))
+                _dom_bar_fig.update_layout(
+                    barmode="group", height=360,
+                    plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                    yaxis=dict(title="ASR (%)", range=[0, 120], gridcolor="#222"),
+                    legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+                    margin=dict(l=10, r=10, t=30, b=10),
+                )
+                st.plotly_chart(_dom_bar_fig, use_container_width=True)
+
+            with _p3c2:
+                st.markdown("##### Per-Attack ASR Heatmap")
+                _atk_ids  = ["attack2_roleplay", "attack1_naive", "attack3_fake_completion"]
+                _atk_lbls = ["Role-play/DAN", "Naive Injection", "Fake Completion"]
+                _z_p3, _txt_p3 = [], []
+                for q in QWEN_FAMILY:
+                    row, txt = [], []
+                    for aid in _atk_ids:
+                        m, _ = _p3_asr(q["model_id"], attack_id=aid)
+                        row.append(m); txt.append(f"{m:.0f}%")
+                    _z_p3.append(row); _txt_p3.append(txt)
+                _heat_fig = go.Figure(go.Heatmap(
+                    z=_z_p3, x=_atk_lbls, y=[q["short"] for q in QWEN_FAMILY],
+                    text=_txt_p3, texttemplate="%{text}",
+                    textfont={"size": 14, "color": "white"},
+                    colorscale=[[0,"#1a4a1a"],[0.5,"#7a7a1a"],[1,"#7a1a1a"]],
+                    zmin=0, zmax=100, showscale=True,
+                ))
+                _heat_fig.update_layout(
+                    height=360, plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#fff",
+                    xaxis=dict(tickangle=-15, tickfont=dict(size=12)),
+                    margin=dict(l=10, r=10, t=20, b=10),
+                )
+                st.plotly_chart(_heat_fig, use_container_width=True)
+
+            st.divider()
+
+            # Summary table
+            st.markdown("##### Summary Table")
+            _sum_rows = []
+            for q in QWEN_FAMILY:
+                p_overall, p_sem = _p3_asr(q["model_id"])
+                p_cooking, _     = _p3_asr(q["model_id"], domain="cooking")
+                p_health, _      = _p3_asr(q["model_id"], domain="health")
+                p_roleplay, _    = _p3_asr(q["model_id"], attack_id="attack2_roleplay")
+                p_naive, _       = _p3_asr(q["model_id"], attack_id="attack1_naive")
+                p_fake, _        = _p3_asr(q["model_id"], attack_id="attack3_fake_completion")
+                _sum_rows.append({
+                    "Model":           q["label"],
+                    "Overall ASR":     f"{p_overall:.0f}% ±{p_sem:.0f}",
+                    "Cooking":         f"{p_cooking:.0f}%",
+                    "Health":          f"{p_health:.0f}%",
+                    "Role-play/DAN":   f"{p_roleplay:.0f}%",
+                    "Naive Injection": f"{p_naive:.0f}%",
+                    "Fake Completion": f"{p_fake:.0f}%",
+                })
+            st.dataframe(pd.DataFrame(_sum_rows), use_container_width=True, hide_index=True)
+            st.caption(
+                "**Key finding:** ASR drops from 91.7% (0.8B) to 46.4% (27B) overall. "
+                "Health domain remains 93–100% across all sizes. "
+                "Cooking drops to 0% at 4B+. Parameter scale partially mitigates but does not eliminate injection vulnerability."
+            )
+
+    # ── Payload Replay ──────────────────────────────────────────────────────────
+    with _p3_replay_tab:
+        st.caption(
+            "Browsing Phase III runs from results/formal_p3/ — no API calls. "
+            "Shows how each Qwen 3.5 variant responded to the top-3 Phase I attack payloads."
+        )
+
+        if not _p3_raw:
+            st.info("No Phase III data yet.")
+        else:
+            _rfc1, _rfc2, _rfc3 = st.columns(3)
+            with _rfc1:
+                _p3_m_opts = ["All"] + [q["label"] for q in QWEN_FAMILY]
+                _p3_sel_m  = st.selectbox("Model", _p3_m_opts, key="p3_rp_m")
+            with _rfc2:
+                _p3_d_opts = ["All"] + sorted({
+                    DOMAIN_LABELS.get(r.get("domain",""), r.get("domain","")) for r in _p3_raw
+                })
+                _p3_sel_d  = st.selectbox("Domain", _p3_d_opts, key="p3_rp_d")
+            with _rfc3:
+                _p3_a_opts = ["All"] + sorted({
+                    r.get("attack_name", r.get("attack_id","")) for r in _p3_raw
+                })
+                _p3_sel_a  = st.selectbox("Attack Type", _p3_a_opts, key="p3_rp_a")
+
+            _qwen_id_by_label = {q["label"]: q["model_id"] for q in QWEN_FAMILY}
+            _p3_rp_filt = [
+                r for r in sorted(_p3_raw, key=lambda x: (
+                    x.get("attack_name", x.get("attack_id","")),
+                    x.get("domain",""), x.get("model",""), x.get("rep", 0),
+                ))
+                if (_p3_sel_m == "All" or r.get("model","") == _qwen_id_by_label.get(_p3_sel_m, ""))
+                and (_p3_sel_d == "All" or DOMAIN_LABELS.get(r.get("domain",""), r.get("domain","")) == _p3_sel_d)
+                and (_p3_sel_a == "All" or r.get("attack_name", r.get("attack_id","")) == _p3_sel_a)
+                and r.get("score","") != "ERROR"
+            ]
+
+            st.markdown(f"**{len(_p3_rp_filt)} run(s) matching filters**")
+            if not _p3_rp_filt:
+                st.warning("No runs match the selected filters.")
+            else:
+                _p3_pp = st.select_slider("Runs per page", [5, 10, 25, 50], value=10, key="p3_rp_pp")
+                _p3_tp = max(1, (len(_p3_rp_filt) + _p3_pp - 1) // _p3_pp)
+                _p3_pg = st.number_input("Page", min_value=1, max_value=_p3_tp, value=1, key="p3_rp_pg") - 1
+
+                for _pr in _p3_rp_filt[_p3_pg * _p3_pp: _p3_pg * _p3_pp + _p3_pp]:
+                    _pr_ml  = MODEL_ID_TO_DISPLAY.get(_pr.get("model",""), _pr.get("model",""))
+                    _pr_dl  = DOMAIN_LABELS.get(_pr.get("domain",""), _pr.get("domain",""))
+                    _pr_an  = _pr.get("attack_name", _pr.get("attack_id",""))
+                    _pr_sc  = _pr.get("score","")
+                    _pr_ico = "✅" if _pr_sc == "SUCCESS" else (
+                        "⚠️" if _pr_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND") else "🛡️"
+                    )
+
+                    with st.expander(
+                        f"{_pr_ico} **{_pr_ml}** · {_pr_dl} · {_pr_an} · Rep {_pr.get('rep', 0) + 1} · {_pr_sc}",
+                        expanded=False,
+                    ):
+                        _pr_spr     = SYSTEM_PROMPTS.get(_pr.get("domain",""), "")
+                        _pr_payload = _pr.get("payload","")
+                        _pr_resp    = _pr.get("response","")
+
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            _panel(f"🤖 AGENT PROMPT · {_pr_dl}", _pr_spr, "#0e3a4a", "#00b4d8", "#e0f7fa")
+                            _panel(f"⚔️ PAYLOAD · {_pr_an}", _pr_payload, "#4a0e0e", "#ef233c", "#ffe0e0")
+                        with c2:
+                            _panel(f"💬 {_pr_ml} RESPONSE", _pr_resp, "#0e4a1a", "#2dc653", "#e0ffe6")
+                            if _pr_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND"):
+                                st.warning(f"{_pr_sc} — excluded from ASR")
+                            elif _pr_sc == "SUCCESS":
+                                st.success("SUCCESS — Model broke its directive")
+                            else:
+                                st.error("FAILURE — Model maintained its directive")
+
 
 # ═══════════════════════════════════════════════════════════
-# LIVE DEMO
+# PHASE IV — LoRA Fine-Tuning
 # ═══════════════════════════════════════════════════════════
-with tab_demo:
-    st.markdown("#### Live Demo — Session Run Log")
-    st.caption("Runs made this session via the sidebar. Saved to results/scratch/ for reference.")
-    _history = st.session_state.get("run_history", [])
-    if not _history:
-        st.info("No runs this session. Select a phase and model in the sidebar, then click **Run Attack**.")
-    else:
-        _SCORE_BADGE = {
-            "SUCCESS":     ("🟢", "#2dc653"),
-            "FAILURE":     ("🔴", "#ef233c"),
-            "AMBIGUOUS":   ("🟡", "#f4a261"),
-            "NO_RESPONSE": ("🟡", "#f4a261"),
-            "CONFOUND":    ("🟡", "#f4a261"),
-            "ERROR":       ("🔴", "#ef233c"),
-        }
-        st.markdown(f"**{len(_history)} run(s) this session**")
-        _summary_rows = []
-        for _i, _entry in enumerate(reversed(_history)):
-            _icon, _ = _SCORE_BADGE.get(_entry["score"], ("⚪", "#aaa"))
-            _summary_rows.append({
-                "#": len(_history)-_i,
-                "Time":   _entry["time"],
-                "Model":  _entry["model"],
-                "Attack": _entry["attack"],
-                "Domain": _entry["domain"],
-                "Score":  f"{_icon} {_entry['score']}",
-            })
-        st.dataframe(pd.DataFrame(_summary_rows), use_container_width=True, hide_index=True)
-        st.markdown("---")
-        st.markdown("**Response Details**")
-        for _i, _entry in enumerate(reversed(_history)):
-            _run_num = len(_history) - _i
-            _icon, _color = _SCORE_BADGE.get(_entry["score"], ("⚪", "#aaa"))
-            _lbl = f"#{_run_num}  {_entry['time']}  ·  {_entry['attack']}  ·  {_entry['model']}  ·  {_icon} {_entry['score']}"
-            with st.expander(_lbl, expanded=(_i == 0)):
-                st.markdown(
-                    f"<span style='color:{_color}; font-weight:bold;'>{_entry['score']}</span>"
-                    f"  &nbsp;|&nbsp;  {_entry['domain']}",
-                    unsafe_allow_html=True,
-                )
-                st.text_area("Response", _entry["response"], height=160,
-                             key=f"demo_resp_{_run_num}_{_i}", disabled=True)
+with tab_p4:
+    st.markdown("#### Phase IV — LoRA Fine-Tuning (Llama 3.1 8B)")
+    st.caption("168 refusal examples · LoRA r=16 · 3 epochs · RTX 3060 Ti · ~6 min training")
+
+    _p4_results_tab, _p4_replay_tab = st.tabs(["Fine-Tuning Results", "Payload Replay"])
+
+    # ── Fine-Tuning Results ─────────────────────────────────────────────────────
+    with _p4_results_tab:
+        _ftp1, _ftp2, _ftp3 = st.columns(3)
+        _ftp1.metric("Before ASR", "79.6%")
+        _ftp2.metric("After ASR",  "0%", delta="-79.6pp", delta_color="inverse")
+        _ftp3.metric("Relative reduction", "100%", delta_color="inverse")
+
+        _ft_atk_labels = ["Naive\nInjection","Role-play\n/ DAN","Fake\nCompletion","Sys Prompt\nExtraction","Base64\nEncoding"]
+        _ft_b = [41.4, 50.9, 39.0, 28.8, 29.3]
+        _ft_a = [0.0,  0.0,  0.0,  0.0,  0.0]
+        _fig_p4ft = go.Figure()
+        _fig_p4ft.add_bar(name="Before (baseline)", x=_ft_atk_labels, y=_ft_b, marker_color="#d62728")
+        _fig_p4ft.add_bar(name="After LoRA SFT",    x=_ft_atk_labels, y=_ft_a, marker_color="#2ca02c")
+        _fig_p4ft.update_layout(
+            barmode="group",
+            plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
+            height=400,
+            yaxis=dict(title="ASR (%)", range=[0,95], gridcolor="#333", color="#ffffff"),
+            xaxis=dict(title="Attack Type", color="#ffffff"),
+            legend=dict(orientation="h", y=1.12, font_color="#ffffff"),
+            title=dict(text="Llama 3.1 8B: ASR Before vs After LoRA Fine-Tuning", font_color="#ffffff"),
+        )
+        st.plotly_chart(_fig_p4ft, use_container_width=True)
+
+        _domain_col1, _domain_col2 = st.columns(2)
+        with _domain_col1:
+            st.metric("Health domain — Before", "60%")
+            st.metric("Health domain — After",  "0%",  delta="-60pp", delta_color="inverse")
+        with _domain_col2:
+            st.metric("Cooking domain — Before", "18%")
+            st.metric("Cooking domain — After",  "0%", delta="-18pp", delta_color="inverse")
+
+        with st.expander("Methodology & caveats"):
+            st.markdown("""
+- **Training data**: 168 (attack payload, refusal) pairs generated by Claude Sonnet 4.6 across 5 attacks × 2 domains × 20 reps (32 compliance-filtered)
+- **Fine-tuning**: Unsloth LoRA SFT, r=16, α=32, 3 epochs, lr=2e-4, effective batch 8
+- **Evaluation**: identical Phase I protocol — 5 attacks × 2 domains × 5 reps (50 trials, rubric v2)
+- **Scores revised** after manual review: 16 records corrected (AMBIGUOUS/SUCCESS → FAILURE) across Naive Injection, Role-play / DAN, and Sys Prompt Extraction
+- **Base64 silent refusal**: `finish_reason=stop`, `completion_tokens=1` — model generates EOS only; confirmed not a token-limit issue via direct API inspection
+            """)
+
+    # ── Payload Replay ──────────────────────────────────────────────────────────
+    with _p4_replay_tab:
+        _FT_MODEL_ID       = "llama-3.1-8b-injectionguard"
+        _FT_BASELINE_ID    = "meta-llama-3.1-8b-instruct"
+        _FT_MODEL_LABEL    = "Llama 3.1 8B (fine-tuned)"
+        _FT_BASELINE_LABEL = "Llama 3.1 8B (baseline)"
+
+        st.caption(
+            "Browsing fine-tuned model runs from results/formal_v2/ — no API calls.  "
+            "Left column shows the same Phase I baseline payload; right column shows the "
+            "fine-tuned model's response, optionally compared to the pre-FT baseline."
+        )
+
+        _p4_show_cmp = st.checkbox(
+            "Show pre-FT baseline (Llama 3.1 8B) response for comparison",
+            value=True, key="p4_rp_cmp",
+        )
+
+        # Load fine-tuned model records
+        _ft_recs_raw = [
+            r for r in load_formal_records()
+            if r.get("model","") == _FT_MODEL_ID
+        ]
+
+        # Pre-build baseline lookup keyed by (attack_id, domain)
+        _ft_base_by_key: dict[tuple, list[dict]] = {}
+        for _r in load_formal_records():
+            if _r.get("model","") != _FT_BASELINE_ID:
+                continue
+            _k = (_r.get("attack_id",""), _r.get("domain",""))
+            _ft_base_by_key.setdefault(_k, []).append(_r)
+
+        if not _ft_recs_raw:
+            st.info(
+                "No fine-tuned model records found in results/formal_v2/.  "
+                "Run: `python -m src.main --phase p4` with model `llama-3.1-8b-injectionguard`"
+            )
+        else:
+            # Filter controls
+            _p4fc1, _p4fc2 = st.columns(2)
+            with _p4fc1:
+                _p4_d_opts = ["All"] + sorted({
+                    DOMAIN_LABELS.get(r.get("domain",""), r.get("domain",""))
+                    for r in _ft_recs_raw
+                })
+                _p4_sel_d = st.selectbox("Domain", _p4_d_opts, key="p4_rp_d")
+            with _p4fc2:
+                _p4_a_opts = ["All"] + sorted({
+                    r.get("attack_name", r.get("attack_id","")) for r in _ft_recs_raw
+                })
+                _p4_sel_a = st.selectbox("Attack Type", _p4_a_opts, key="p4_rp_a")
+
+            _ft_filt = sorted(
+                [
+                    r for r in _ft_recs_raw
+                    if (_p4_sel_d == "All" or DOMAIN_LABELS.get(r.get("domain",""), r.get("domain","")) == _p4_sel_d)
+                    and (_p4_sel_a == "All" or r.get("attack_name", r.get("attack_id","")) == _p4_sel_a)
+                ],
+                key=lambda x: (x.get("attack_name", x.get("attack_id","")), x.get("domain",""), x.get("rep",0)),
+            )
+
+            st.markdown(f"**{len(_ft_filt)} run(s) matching filters**")
+            if not _ft_filt:
+                st.warning("No runs match the selected filters.")
+            else:
+                _p4_pp = st.select_slider("Runs per page", [5, 10, 25, 50], value=10, key="p4_rp_pp")
+                _p4_tp = max(1, (len(_ft_filt) + _p4_pp - 1) // _p4_pp)
+                _p4_pg = st.number_input("Page", min_value=1, max_value=_p4_tp, value=1, key="p4_rp_pg") - 1
+
+                for _fr in _ft_filt[_p4_pg * _p4_pp: _p4_pg * _p4_pp + _p4_pp]:
+                    _fr_dl  = DOMAIN_LABELS.get(_fr.get("domain",""), _fr.get("domain",""))
+                    _fr_an  = _fr.get("attack_name", _fr.get("attack_id",""))
+                    _fr_sc  = _fr.get("score","")
+                    _fr_ico = "✅" if _fr_sc == "SUCCESS" else (
+                        "⚠️" if _fr_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND") else "🛡️"
+                    )
+
+                    with st.expander(
+                        f"{_fr_ico} **{_FT_MODEL_LABEL}** · {_fr_dl} · {_fr_an} · Rep {_fr.get('rep',0)+1} · {_fr_sc}",
+                        expanded=False,
+                    ):
+                        _fr_spr     = SYSTEM_PROMPTS.get(_fr.get("domain",""), "")
+                        _fr_payload = _fr.get("payload","")
+                        _fr_resp    = _fr.get("response","")
+                        _fr_key     = (_fr.get("attack_id",""), _fr.get("domain",""))
+                        _fr_cmp_recs = _ft_base_by_key.get(_fr_key, []) if _p4_show_cmp else []
+
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            _panel(
+                                f"🤖 AGENT PROMPT · {_fr_dl}",
+                                _fr_spr, "#0e3a4a", "#00b4d8", "#e0f7fa",
+                            )
+                            _panel(
+                                f"⚔️ BASELINE PAYLOAD · {_fr_an}",
+                                _fr_payload, "#4a0e0e", "#ef233c", "#ffe0e0",
+                            )
+                        with c2:
+                            _panel(
+                                f"💬 {_FT_MODEL_LABEL} RESPONSE",
+                                _fr_resp, "#0e4a1a", "#2dc653", "#e0ffe6",
+                            )
+                            if _fr_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND"):
+                                st.warning(f"{_fr_sc} — excluded from ASR")
+                            elif _fr_sc == "SUCCESS":
+                                st.success("SUCCESS — Fine-tuned model broke its directive")
+                            else:
+                                st.error("FAILURE — Fine-tuned model maintained its directive")
+
+                            if _fr_cmp_recs:
+                                st.markdown("---")
+                                st.caption(f"Pre-FT baseline comparison ({_FT_BASELINE_LABEL}, same attack + domain)")
+                                for _cmp in _fr_cmp_recs[:3]:
+                                    _cmp_sc  = _cmp.get("score","")
+                                    _cmp_ico = "✅" if _cmp_sc == "SUCCESS" else (
+                                        "⚠️" if _cmp_sc in ("AMBIGUOUS","NO_RESPONSE","CONFOUND") else "🛡️"
+                                    )
+                                    _panel(
+                                        f"{_cmp_ico} PRE-FT BASELINE · Rep {_cmp.get('rep',0)+1} · {_cmp_sc}",
+                                        _cmp.get("response",""), "#1a1a3a", "#f4a261", "#ffe0b2",
+                                    )
+                            elif _p4_show_cmp:
+                                st.caption("No pre-FT baseline records for this attack + domain.")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1581,15 +1584,14 @@ with tab_overview:
             _ov_p1_st  = _model_asr_sem(_ov_p1_raw)
             _ov_p2a_st = _model_asr_sem(_ov_p2a_raw)
             _ov_p2b_st = _model_asr_sem(_ov_p2b_raw)
-            _ov_mdls   = sorted(set(list(_ov_p1_st)+list(_ov_p2a_st)+list(_ov_p2b_st)))
+            _ov_mdls   = sorted(set(list(_ov_p1_st)+list(_ov_p2b_st)))
             if not _ov_mdls:
                 st.info("No results yet.")
             else:
                 fig_ov_mc = go.Figure()
                 for _sn, _st, _col in [
-                    ("Phase I — Baseline",      _ov_p1_st,  "#00b4d8"),
-                    ("Phase IIA — Schema",       _ov_p2a_st, "#a78bfa"),
-                    ("Phase IIB — Multilingual", _ov_p2b_st, "#ef233c"),
+                    ("Phase I — Baseline",       _ov_p1_st,  "#00b4d8"),
+                    ("Phase IIA — Multilingual", _ov_p2b_st, "#ef233c"),
                 ]:
                     if not _st: continue
                     fig_ov_mc.add_trace(go.Bar(
@@ -1625,12 +1627,11 @@ with tab_overview:
         )
         _progress = [
             _phase_pct(["cooking","health"]),
-            _phase_pct(["compliant_assistant","truth_teller"]),
-            _p2b_pct, 0, 0,
+            _p2b_pct, 100, 100, 100,
         ]
         fig_tl = go.Figure(go.Bar(
-            x=["Phase I — Baseline","Phase IIA — Schema","Phase IIB — Multilingual",
-               "Phase IIC — LLM Attacker","Phase III — Fine-Tuning"],
+            x=["Phase I — Baseline","Phase IIA — Multilingual",
+               "Phase IIB — LLM Attacker","Phase III — Qwen Family","Phase IV — Fine-Tuning"],
             y=_progress,
             marker_color=["#2dc653" if p==100 else ("#f4a261" if p>0 else "#666666") for p in _progress],
             text=[f"{v}%" for v in _progress], textposition="outside",

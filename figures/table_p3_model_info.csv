@@ -1,0 +1,4 @@
+Model,Total Params,Active Params,Architecture,Quantization
+Qwen 3.5 9B Distilled,9B,9B (dense),Dense — distilled from Claude 4.6 Opus reasoning traces,Q4_K_M (typical LM Studio default)
+Qwen 3.6 27B MTP,27B,27B (dense),Dense — Multi-Token Prediction head,Q4_K_M (typical LM Studio default)
+Qwen 3.6 35B A3B MTP,35B,~3.6B active (MoE),"Mixture-of-Experts — A3B active params, Multi-Token Prediction head",Q4_K_M (typical LM Studio default)

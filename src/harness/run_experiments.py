@@ -240,8 +240,8 @@ def main() -> None:
                         help=(
                             "Preset phase config: "
                             "p1=Phase I baseline attacks, "
-                            "p2a=Phase IIA schema attacks, "
-                            "p2b=Phase IIB multilingual (all languages, saves to results/formal_p2b/)"
+                            "p2a=Phase IIA schema attacks (deprecated), "
+                            "p2b=Phase IIA multilingual (all languages, saves to results/formal_p2b/)"
                         ))
     args = parser.parse_args()
 

@@ -1,4 +1,4 @@
-"""Phase IIC — LLM as an Attacker.
+"""Phase IIB — LLM as an Attacker.
 
 Llama 3.1 8B (highest Phase I ASR: 76.7% across all Phase I files) generates
 adversarial injection payloads.  Claude Sonnet 4.6 (lowest Phase I ASR: 13.3%)

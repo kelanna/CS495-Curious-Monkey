@@ -1,4 +1,4 @@
-"""Phase IIC batch runner — LLM as Attacker with payload freeze.
+"""Phase IIB batch runner — LLM as Attacker with payload freeze.
 
 Setup (from Phase I results across all formal runs):
   Attacker : meta-llama-3.1-8b-instruct  (76.7% ASR — highest)
@@ -38,7 +38,7 @@ def run_phase_iic() -> list[dict]:
     system_prompt = SYSTEM_PROMPTS[DOMAIN_ID]
     results: list[dict] = []
 
-    console.rule("[bold cyan]Phase IIC — LLM as Attacker[/bold cyan]")
+    console.rule("[bold cyan]Phase IIB — LLM as Attacker[/bold cyan]")
     console.print(f"  Attacker : [yellow]{ATTACKER_MODEL}[/yellow]")
     console.print(f"  Defender : [yellow]{DEFENDER_MODEL}[/yellow]")
     console.print(f"  Domain   : [yellow]{DOMAIN_ID}[/yellow]")
@@ -103,7 +103,7 @@ def save_results(results: list[dict]) -> str:
 
 def print_summary(results: list[dict]) -> None:
     from collections import defaultdict
-    console.rule("[bold]Phase IIC Summary[/bold]")
+    console.rule("[bold]Phase IIB Summary[/bold]")
     by_style: dict[str, list] = defaultdict(list)
     for r in results:
         by_style[r["attack_id"]].append(r)

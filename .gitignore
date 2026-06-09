@@ -1,6 +1,12 @@
 # Results database
 results/*.db
 
+# Scratch / temporary run data
+results/scratch/
+
+# Fine-tuned model weights (too large for git)
+models/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

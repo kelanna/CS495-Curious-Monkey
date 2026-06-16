@@ -217,3 +217,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Node.js (unrelated artifacts)
+node_modules/
+package.json
+package-lock.json

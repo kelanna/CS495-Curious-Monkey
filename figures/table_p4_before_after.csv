@@ -1,0 +1,7 @@
+Attack,Before ASR,After ASR,Delta (pp)
+Naive Injection,41%,0%,-41
+Role-play / DAN,51%,0%,-51
+Fake Completion,39%,0%,-39
+Sys Prompt Extraction,29%,0%,-29
+Base64 Encoding,29%,0%,-29
+OVERALL,79.6%,0.0%,-79.6

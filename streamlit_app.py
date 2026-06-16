@@ -573,7 +573,12 @@ with tab_p1:
         if _asr_p1.empty:
             st.info("No Phase I data yet. Run: `python -m src.main --phase p1`")
         else:
-            _p1_grp = _asr_p1.groupby(["attack_name","domain"])["asr"].mean().round(1).reset_index()
+            _p1_grp = _asr_p1.groupby(["attack_name","domain"]).agg(
+                asr=("asr", "mean"),
+                asr_sem=("asr", lambda x: float(pd.Series(x).std(ddof=1) / np.sqrt(len(x))) if len(x) > 1 else 0.0),
+            ).reset_index()
+            _p1_grp["asr"]     = _p1_grp["asr"].round(1)
+            _p1_grp["asr_sem"] = _p1_grp["asr_sem"].round(1)
             _p1_dom_colors = {"cooking": "#00b4d8", "health": "#2dc653"}
             fig_p1_atk = go.Figure()
             for _dom in ["cooking", "health"]:
@@ -583,12 +588,14 @@ with tab_p1:
                 fig_p1_atk.add_trace(go.Bar(
                     name=DOMAIN_LABELS.get(_dom, _dom),
                     x=_sub["attack_name"], y=_sub["asr"],
+                    error_y=dict(type="data", array=(_sub["asr_sem"] * 2).tolist(),
+                                 visible=True, color="#ffffff", thickness=1.5),
                     marker_color=_p1_dom_colors.get(_dom, "#888"),
                     text=[f"{v:.0f}%" for v in _sub["asr"]], textposition="outside",
                 ))
             fig_p1_atk.update_layout(
                 plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
-                yaxis=dict(range=[0, 120], title="ASR %", gridcolor="#222"),
+                yaxis=dict(range=[0, 130], title="ASR %", gridcolor="#222"),
                 xaxis=dict(title="Attack Type"),
                 barmode="group", height=420,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -1179,6 +1186,7 @@ with tab_p3:
                         error_y=dict(type="data", array=_errs, visible=True,
                                      color="#ffffff", thickness=1),
                         marker_color=q["color"], marker_line_color="#333", marker_line_width=1,
+                        text=[f"{v:.0f}%" for v in _ys], textposition="outside",
                     ))
                 _dom_bar_fig.update_layout(
                     barmode="group", height=360,
@@ -1335,16 +1343,45 @@ with tab_p4:
         _ftp3.metric("Relative reduction", "100%", delta_color="inverse")
 
         _ft_atk_labels = ["Naive\nInjection","Role-play\n/ DAN","Fake\nCompletion","Sys Prompt\nExtraction","Base64\nEncoding"]
+        _ft_atk_ids    = ["attack1_naive","attack2_roleplay","attack3_fake_completion","attack4_extraction","attack5_base64"]
         _ft_b = [41.4, 50.9, 39.0, 28.8, 29.3]
         _ft_a = [0.0,  0.0,  0.0,  0.0,  0.0]
+
+        _ft_excl_sc     = {"AMBIGUOUS","NO_RESPONSE","CONFOUND","ERROR"}
+        _ft_base_mid    = "meta-llama-3.1-8b-instruct"
+        _ft_tuned_mid   = "llama-3.1-8b-injectionguard"
+        _ft_all_recs    = load_formal_records()
+        _ft_b_sem, _ft_a_sem = [], []
+        for _faid in _ft_atk_ids:
+            _bv = np.array([float(r.get("success", False)) for r in _ft_all_recs
+                            if r.get("model") == _ft_base_mid and r.get("attack_id") == _faid
+                            and r.get("score","") not in _ft_excl_sc], dtype=float)
+            _av = np.array([float(r.get("success", False)) for r in _ft_all_recs
+                            if r.get("model") == _ft_tuned_mid and r.get("attack_id") == _faid
+                            and r.get("score","") not in _ft_excl_sc], dtype=float)
+            _ft_b_sem.append(round(float(_bv.std(ddof=1) / np.sqrt(len(_bv)) * 100), 1) if len(_bv) > 1 else 0.0)
+            _ft_a_sem.append(round(float(_av.std(ddof=1) / np.sqrt(len(_av)) * 100), 1) if len(_av) > 1 else 0.0)
+
         _fig_p4ft = go.Figure()
-        _fig_p4ft.add_bar(name="Before (baseline)", x=_ft_atk_labels, y=_ft_b, marker_color="#d62728")
-        _fig_p4ft.add_bar(name="After LoRA SFT",    x=_ft_atk_labels, y=_ft_a, marker_color="#2ca02c")
+        _fig_p4ft.add_bar(
+            name="Before (baseline)", x=_ft_atk_labels, y=_ft_b,
+            marker_color="#d62728",
+            error_y=dict(type="data", array=[s * 2 for s in _ft_b_sem],
+                         visible=True, color="#ffffff", thickness=1.5),
+            text=[f"{v:.0f}%" for v in _ft_b], textposition="outside",
+        )
+        _fig_p4ft.add_bar(
+            name="After LoRA SFT", x=_ft_atk_labels, y=_ft_a,
+            marker_color="#2ca02c",
+            error_y=dict(type="data", array=[s * 2 for s in _ft_a_sem],
+                         visible=True, color="#ffffff", thickness=1.5),
+            text=[f"{v:.0f}%" for v in _ft_a], textposition="outside",
+        )
         _fig_p4ft.update_layout(
             barmode="group",
             plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font_color="#ffffff",
             height=400,
-            yaxis=dict(title="ASR (%)", range=[0,95], gridcolor="#333", color="#ffffff"),
+            yaxis=dict(title="ASR (%)", range=[0, 110], gridcolor="#333", color="#ffffff"),
             xaxis=dict(title="Attack Type", color="#ffffff"),
             legend=dict(orientation="h", y=1.12, font_color="#ffffff"),
             title=dict(text="Llama 3.1 8B: ASR Before vs After LoRA Fine-Tuning", font_color="#ffffff"),
